@@ -1,5 +1,5 @@
 """Empathos – streamlined Streamlit front‑end
-All widgets now have non‑empty labels (hidden if necessary) so Streamlit ≥ 1.33
+All widgets now have non‑empty labels (hidden if necessary) so Streamlit ≥1.33
 shows no accessibility warnings. Minor defensive tweaks included.
 """
 
@@ -207,7 +207,8 @@ def generate_draft() -> None:
 
     base_words = 120
     max_words = base_words + 40 * (length_value // 2)
-    max_tokens = int(max_words * 1.5)
+    max_words = max(30, max_words)  # ensure at least 30 words minimum
+    max_tokens = max(1, int(max_words * 1.5))  # clamp tokens to at least 1
 
     system_prompt = (
         "You are a customer-service specialist for unit-linked life insurance.\n"
@@ -326,10 +327,9 @@ if st.button("Translate Final Version"):
 
 st.subheader("Final Response (Translated)")
 st.text_area(
-    label="final_response_display",
+    label="final_response_display",  # non-empty label
     value=st.session_state["final_response"],
     height=200,
     key="final_response_area",
     label_visibility="collapsed",
 )
-
