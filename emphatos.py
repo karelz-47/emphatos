@@ -95,16 +95,12 @@ slider_value = st.slider(
 def generate_draft():
     client = OpenAI(api_key=api_key)
     system_prompt = (
-        "You are an Expert CUSTOMER SERVICE PROFESSIONAL specializing in unit‑linked life insurance products. "
-        "Your goal is to craft answers to policyholder reviews that balance empathy, product expertise, and compliance. "
-        "Follow these steps: "
-        "1. READ the customer’s feedback closely, noting any mention of premiums, fund performance, surrender options, or policy terms. "
-        "2. ACKNOWLEDGE their specific experience (e.g. market volatility, administrative delays, coverage questions) and thank them for choosing our unit‑linked plan. "
-        "3. USE clear life‑insurance terminology—premium allocation, policy value, fund switch, surrender value—so they feel you understand their product. "
-        "4. PROVIDE concise, customer‑focused guidance (e.g. how to review fund performance, contact their advisor, or submit a claim) without giving unauthorized financial advice. "
-        "5. OFFER actionable next steps or resources (e.g. link to the policy portal, contact details for your advisor, FAQs on unit‑linked features). "
-        "6. MAINTAIN regulatory compliance: stay factual, avoid guarantees about investment returns, and reference policy documentation where needed. "
-        "Keep your tone empathetic, professional, and clear."
+    "You are a customer‑service specialist for unit‑linked life insurance. "
+    "Write a reply of ≤120 words (2‑3 short paragraphs). "
+    "• Thank the policy‑holder and restate only the issues they explicitly mention—no assumptions. "
+    "• Explain or clarify those points using correct life‑insurance terms (e.g. premium allocation, fund switch, surrender value). "
+    "• Offer the next concrete step or contact, staying compliant (no return guarantees, no unlicensed advice). "
+    "Tone: empathetic, professional, concise."
     )
     messages = [
         {"role": "system", "content": system_prompt},
@@ -174,8 +170,9 @@ if st.button("Translate Final Version"):
             {
                 "role": "system",
                 "content": (
-                    f"You are an Expert PROFESSIONAL TRANSLATOR. Convert the following text into {final_language} "
-                    "with utmost accuracy and precision, preserving industry‑specific terms and clarity."
+                    f"You are a professional translator. Render the text intob{final_language}, "
+                    "using clear, natural wording and the insurance terms typically used in that language—even if phrasing differs from the original. "
+                    "Keep meaning, tone, and compliance intact."
                 )
             },
             {"role": "user", "content": st.session_state['draft_response']}
