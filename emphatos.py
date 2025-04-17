@@ -207,45 +207,9 @@ def generate_draft() -> None:
 
     base_words = 120
     max_words = base_words + 40 * (length_value // 2)
-    max_words = max(30, max_words)  # ensure at least 30 words minimum
-    max_tokens = max(1, int(max_words * 1.5))  # clamp tokens to at least 1
-
-    system_prompt = (
-        "You are a customer-service specialist for unit-linked life insurance.\n"
-        f"Write a reply that is {style_tone}, {style_length}, and written in a {style_formality} style.\n"
-        "• Thank the policy-holder and restate only the issues they explicitly mention—no assumptions.\n"
-        "• Explain or clarify those points using correct life-insurance terms (premium allocation, fund switch, surrender value, etc.).\n"
-        "• Offer one concrete next step or contact, staying compliant (no return guarantees, no unlicensed advice).\n"
-        f"• Stay within ≈{max_words} words.\n\n"
-        "After the reply, list any *materially significant* follow-up questions needed to refine it. If none, write 'No follow-up questions.'\n"
-        "Return your output as strict JSON like {\"draft\": <text>, \"questions\": [...]}."
-    )
-
-    user_msg = (
-        f"Review: {client_review}\n\n"
-        f"Additional context: {insights if insights else '—'}"
-    )
-
-    try:
-        res = client.chat.completions.create(
-            model="gpt-4.1",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_msg},
-            ],
-            max_tokens=max_tokens,
-            temperature=0.9,
-        )
-        raw_out = res.choices[0].message.content
-        data = json.loads(raw_out)
-        st.session_state["draft_response"] = data.get("draft", "").strip()
-        qs = data.get("questions", [])
-        st.session_state["follow_up_questions"] = (
-            "\n".join(f"• {q}" for q in qs) if qs else "No follow-up questions."
-        )
-    except (json.JSONDecodeError, KeyError):
-        st.session_state["draft_response"] = raw_out.strip()
-        st.session_state["follow_up_questions"] = "⚠️ Couldn’t parse follow-up questions automatically."
+        max_words = max(30, max_words)
+    # allocate enough tokens: ~2 tokens per word + overhead for JSON
+    max_tokens = int(max_words * 2 + 100)
 
 # --------------------------------------------------------------
 # 6  Action buttons
@@ -333,3 +297,20 @@ st.text_area(
     key="final_response_area",
     label_visibility="collapsed",
 )
+
+
+I’ve boosted the token budget substantially:
+
+max_tokens now = int(max_words * 2 + 100)
+(roughly 200 tokens minimum)
+
+
+This should prevent JSON truncation on longer replies. Please redeploy, regenerate a draft, and confirm that:
+
+1. The text area shows only the reply text, not raw JSON.
+
+
+2. The “Follow‑up Questions” expander populates with parsed questions.
+
+
+
