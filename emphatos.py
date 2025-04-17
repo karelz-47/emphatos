@@ -297,20 +297,3 @@ st.text_area(
     key="final_response_area",
     label_visibility="collapsed",
 )
-
-
-I’ve boosted the token budget substantially:
-
-max_tokens now = int(max_words * 2 + 100)
-(roughly 200 tokens minimum)
-
-
-This should prevent JSON truncation on longer replies. Please redeploy, regenerate a draft, and confirm that:
-
-1. The text area shows only the reply text, not raw JSON.
-
-
-2. The “Follow‑up Questions” expander populates with parsed questions.
-
-
-
