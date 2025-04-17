@@ -207,7 +207,7 @@ def generate_draft() -> None:
 
     base_words = 120
     max_words = base_words + 40 * (length_value // 2)
-    max_words = max(30, max_words)
+        max_words = max(30, max_words)
     # allocate enough tokens: ~2 tokens per word + overhead for JSON
     max_tokens = int(max_words * 2 + 100)
 
@@ -220,14 +220,20 @@ with col1:
     if st.button("Generate Draft"):
         if not client_review.strip():
             st.error("Please enter a policyholder review.")
+        elif not api_key:
+            st.error("Please enter your OpenAI API key.")
         else:
-            generate_draft()
+            with st.spinner("Generating draft…"):
+                generate_draft()
 with col2:
     if st.button("Regenerate Draft"):
         if not client_review.strip():
             st.error("Please enter a policyholder review.")
+        elif not api_key:
+            st.error("Please enter your OpenAI API key.")
         else:
-            generate_draft()
+            with st.spinner("Regenerating draft…"):
+                generate_draft()
 
 # --------------------------------------------------------------
 # 7  Display draft & questions
@@ -297,3 +303,16 @@ st.text_area(
     key="final_response_area",
     label_visibility="collapsed",
 )
+
+
+I added an explicit spinner around both Generate Draft and Regenerate Draft button handlers to confirm that the callback is firing:
+
+if st.button("Generate Draft"):
+    …
+    with st.spinner("Generating draft…"):
+        generate_draft()
+
+if st.button("Regenerate Draft"):
+    …
+    with st.spinner("Regenerating draft…"):
+        generate_draft()
