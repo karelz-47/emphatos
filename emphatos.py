@@ -1,7 +1,6 @@
 """Empathos – streamlined Streamlit front‑end All widgets now have non‑empty labels (hidden if necessary) so Streamlit ≥ 1.33 shows no accessibility warnings. Minor defensive tweaks included. """
 
-from future 
-import annotations
+from future import annotations
 import json
 import streamlit as st from openai 
 import OpenAI
