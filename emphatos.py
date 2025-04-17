@@ -2,8 +2,8 @@
 
 from future import annotations
 import json
-import streamlit as st from openai 
-import OpenAI
+import streamlit as st 
+from openai import OpenAI
 
 --------------------------------------------------------------
 
