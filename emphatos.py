@@ -253,15 +253,14 @@ with col2:
         else:
             generate_draft()
 
-# ——————————————————————————————————————————————
-# 5  Display draft & questions
-# ——————————————————————————————————————————————
+# ——— 5. Display draft ——————————————————————————————
 st.header("Draft Response (Editable)")
 st.text_area(
-    "",
+    "Draft Response",                 # <‑‑ non‑empty
     value=st.session_state["draft_response"],
     height=220,
     key="draft_response_area",
+    label_visibility="collapsed",     # keeps UI clean
 )
 
 with st.expander("Follow‑up Questions"):
@@ -308,13 +307,12 @@ if st.button("Translate Final Version"):
         )
         st.session_state["final_response"] = translated
 
-# ——————————————————————————————————————————————
-# 7  Display final response
-# ——————————————————————————————————————————————
+# ——— 7. Display final response ——————————————————————————
 st.subheader("Final Response (Translated)")
 st.text_area(
-    "",
+    "Final Response",
     value=st.session_state["final_response"],
     height=200,
     key="final_response_area",
+    label_visibility="collapsed",
 )
