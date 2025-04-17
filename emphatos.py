@@ -229,9 +229,7 @@ def generate_draft() -> None:
     )
 
     user_msg = (
-        f"Review: {client_review}
-
-"
+        f"Review: {client_review}"
         f"Additional context: {insights if insights else '—'}"
     )
 
