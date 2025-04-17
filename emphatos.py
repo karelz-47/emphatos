@@ -303,16 +303,3 @@ st.text_area(
     key="final_response_area",
     label_visibility="collapsed",
 )
-
-
-I added an explicit spinner around both Generate Draft and Regenerate Draft button handlers to confirm that the callback is firing:
-
-if st.button("Generate Draft"):
-    …
-    with st.spinner("Generating draft…"):
-        generate_draft()
-
-if st.button("Regenerate Draft"):
-    …
-    with st.spinner("Regenerating draft…"):
-        generate_draft()
