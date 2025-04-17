@@ -207,7 +207,7 @@ def generate_draft() -> None:
 
     base_words = 120
     max_words = base_words + 40 * (length_value // 2)
-        max_words = max(30, max_words)
+    max_words = max(30, max_words)
     # allocate enough tokens: ~2 tokens per word + overhead for JSON
     max_tokens = int(max_words * 2 + 100)
 
