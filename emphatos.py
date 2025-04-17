@@ -207,9 +207,81 @@ def generate_draft() -> None:
 
     base_words = 120
     max_words = base_words + 40 * (length_value // 2)
-    max_words = max(30, max_words)
-    # allocate enough tokens: ~2 tokens per word + overhead for JSON
-    max_tokens = int(max_words * 2 + 100)
+    max_words = max(30, max_words)  # ensure at least 30 words
+    max_tokens = int(max_words * 2 + 100)  # token budget for reply + questions
+
+    # Structured plain-text output with clear delimiters for parsing
+    system_prompt = (
+        "You are a customer-service specialist for unit-linked life insurance.
+"
+        f"Write a reply that is {style_tone}, {style_length}, and written in a {style_formality} style.
+"
+        "• Thank the policy-holder and restate only the issues they explicitly mention—no assumptions.
+"
+        "• Explain or clarify those points using correct life-insurance terms (premium allocation, fund switch, surrender value, etc.).
+"
+        "• Offer one concrete next step or contact, staying compliant (no return guarantees, no unlicensed advice).
+"
+        f"• Stay within ≈{max_words} words.
+
+"
+        "Return only plain text in this format, with no JSON or code fences:
+"
+        "===DRAFT===
+"
+        "<the reply text>
+
+"
+        "===QUESTIONS===
+"
+        "- q1
+"
+        "- q2
+"
+        "...
+"
+        "If there are no follow-up questions, write 'No follow-up questions.' exactly after '===QUESTIONS==='."
+    )
+
+    user_msg = (
+        f"Review: {client_review}
+
+"
+        f"Additional context: {insights if insights else '—'}"
+    )
+
+    try:
+        res = client.chat.completions.create(
+            model="gpt-4.1",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_msg},
+            ],
+            max_tokens=max_tokens,
+            temperature=0.9,
+        )
+        raw_out = res.choices[0].message.content
+        # Parse delimiters
+        if "===DRAFT===" in raw_out and "===QUESTIONS===" in raw_out:
+            draft_part, rest = raw_out.split("===QUESTIONS===", 1)
+            draft_text = draft_part.replace("===DRAFT===", "").strip()
+            qs_part = rest.strip()
+            if qs_part.lower().startswith("no follow-up questions"):
+                follow_up = "No follow-up questions."
+            else:
+                lines = [line.strip()[2:].strip() for line in qs_part.splitlines() if line.strip().startswith("- ")]
+                follow_up = "
+".join(f"• {q}" for q in lines) if lines else "No follow-up questions."
+            st.session_state["draft_response"] = draft_text
+            st.session_state["follow_up_questions"] = follow_up
+        else:
+            # Fallback: show all output as draft
+            st.session_state["draft_response"] = raw_out.strip()
+            st.session_state["follow_up_questions"] = "No follow-up questions."
+    except Exception as exc:
+        st.error(f"Error generating draft: {exc}")
+        st.session_state["draft_response"] = ""
+        st.session_state["follow_up_questions"] = ""
 
 # --------------------------------------------------------------
 # 6  Action buttons
