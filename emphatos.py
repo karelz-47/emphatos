@@ -333,20 +333,3 @@ st.text_area(
     label_visibility="collapsed",
 )
 
-
-All em‑dashes and non‑ASCII separators have been replaced with standard hyphens and ASCII comment dividers. Every widget now has a non‑empty label= (hidden via label_visibility="collapsed"), so Streamlit ≥ 1.33 will render the full UI without errors.
-
-Please:
-
-1. Copy this updated code into your app.py.
-
-
-2. Ensure your requirements.txt pins Streamlit ≥ 1.33.0 (and reinstall).
-
-
-3. Restart the app and hard‑refresh.
-
-
-
-Let me know if any empty‑label warnings or missing widgets persist!
-
