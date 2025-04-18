@@ -58,17 +58,20 @@ if api_key == "":
 # 2  Sentiment, length & formality analysis
 # --------------------------------------------------------------
 
-def call_chat(messages: list[dict[str, str]], *, model: str = "gpt-4.1-mini") -> str:
+def call_chat(messages: list[dict[str, str]], *, model: str = "gpt-4.1-mini", max_tokens: int = 20, temperature: float = 0.0) -> str:
     """Wrapper with basic error handling; returns empty string on failure."""
     try:
         client = OpenAI(api_key=api_key)
         res = client.chat.completions.create(
             model=model,
             messages=messages,
-            max_tokens=20,
-            temperature=0,
+            max_tokens=max_tokens,
+            temperature=temperature,
         )
         return res.choices[0].message.content.strip()
+    except Exception as exc:
+        st.error(f"OpenAI error: {exc}")
+        return ""[0].message.content.strip()
     except Exception as exc:
         st.error(f"OpenAI error: {exc}")
         return ""
@@ -207,29 +210,32 @@ def generate_draft() -> None:
 
     base_words = 120
     max_words = base_words + 40 * (length_value // 2)
-    max_words = max(30, max_words)  # ensure at least 30 words
-    max_tokens = int(max_words * 2 + 100)  # token budget for reply + questions
+    max_words = max(30, max_words)
+    max_tokens = int(max_words * 2 + 100)
 
-    # Structured plain-text output with clear delimiters for parsing
-    system_prompt = (
-        "You are a customer-service specialist for unit-linked life insurance."
-        f"Write a reply that is {style_tone}, {style_length}, and written in a {style_formality} style."
-        "• Thank the policy-holder and restate only the issues they explicitly mention—no assumptions."
-        "• Explain or clarify those points using correct life-insurance terms (premium allocation, fund switch, surrender value, etc.)."
-        "• Offer one concrete next step or contact, staying compliant (no return guarantees, no unlicensed advice)."
-        f"• Stay within ≈{max_words} words."
-        "Return only plain text in this format, with no JSON or code fences:"
-        "===DRAFT==="
-        "<the reply text>"
-        "===QUESTIONS==="
-        "- q1"
-        "- q2"
-        "..."
-        "If there are no follow-up questions, write 'No follow-up questions.' exactly after '===QUESTIONS==='."
-    )
+    # Use triple-quoted f-string to avoid unterminated string issues
+    system_prompt = f"""You are a customer-service specialist for unit-linked life insurance.
+Write a reply that is {style_tone}, {style_length}, and written in a {style_formality} style.
+• Thank the policy-holder and restate only the issues they explicitly mention—no assumptions.
+• Explain or clarify those points using correct life-insurance terms (premium allocation, fund switch, surrender value, etc.).
+• Offer one concrete next step or contact, staying compliant (no return guarantees, no unlicensed advice).
+• Stay within ≈{max_words} words.
+
+Return only plain text in this format, with no JSON or code fences:
+===DRAFT===
+<the reply text>
+
+===QUESTIONS===
+- q1
+- q2
+...
+If there are no follow-up questions, write 'No follow-up questions.' exactly after '===QUESTIONS==='.
+"""
 
     user_msg = (
-        f"Review: {client_review}"
+        f"Review: {client_review}
+
+"
         f"Additional context: {insights if insights else '—'}"
     )
 
@@ -253,7 +259,8 @@ def generate_draft() -> None:
                 follow_up = "No follow-up questions."
             else:
                 lines = [line.strip()[2:].strip() for line in qs_part.splitlines() if line.strip().startswith("- ")]
-                follow_up = "".join(f"• {q}" for q in lines) if lines else "No follow-up questions."
+                follow_up = "
+".join(f"• {q}" for q in lines) if lines else "No follow-up questions."
             st.session_state["draft_response"] = draft_text
             st.session_state["follow_up_questions"] = follow_up
         else:
@@ -337,11 +344,13 @@ if st.button("Translate Final Version"):
             "using clear, natural wording and the insurance terms typically used in that language—even if phrasing differs from the original. "
             "Keep meaning, tone, and compliance intact."
         )
-        translated = call_chat(
+                translated = call_chat(
             [
                 {"role": "system", "content": translator_prompt},
                 {"role": "user", "content": st.session_state["draft_response"]},
-            ]
+            ],
+            max_tokens=1000,
+            temperature=0,
         )
         st.session_state["final_response"] = translated
 
