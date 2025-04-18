@@ -101,6 +101,20 @@ if st.button("Analyze Review"):
             lbl = "Positive"
         else:
             lbl = "Very positive"
+        st.session_state.det_label = lbl
+        st.session_state.sugg_tone = TONE_LABEL_MAP.get(lbl, "Neutral")(client_review)
+        st.session_state.det_sentiment = polarity
+        # map to label
+        if polarity <= -0.75:
+            lbl = "Very negative"
+        elif polarity <= -0.25:
+            lbl = "Negative"
+        elif polarity < 0.25:
+            lbl = "Neutral"
+        elif polarity < 0.75:
+            lbl = "Positive"
+        else:
+            lbl = "Very positive"
         st.session_state.sugg_tone = TONE_LABEL_MAP.get(lbl, "Neutral")
 
         # Length detection
@@ -151,7 +165,7 @@ if st.button("Analyze Review"):
 # ------------------------------------------------------------
 if st.session_state.analyzed:
     st.markdown("### Analysis Results")
-    st.write(f"Detected sentiment: {st.session_state.det_sentiment:+.2f} ({lbl})")
+    st.write(f"Detected sentiment: {st.session_state.det_sentiment:+.2f} ({st.session_state.det_label})") {st.session_state.det_sentiment:+.2f} ({lbl})")
     st.write(f"Suggested tone: {st.session_state.sugg_tone}")
     st.write(f"Detected length: {st.session_state.det_length}")
     st.write(f"Suggested length: {st.session_state.sugg_length}")
