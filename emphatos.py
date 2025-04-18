@@ -233,9 +233,7 @@ If there are no follow-up questions, write 'No follow-up questions.' exactly aft
 """
 
     user_msg = (
-        f"Review: {client_review}
-
-"
+        f"Review: {client_review}"
         f"Additional context: {insights if insights else '—'}"
     )
 
