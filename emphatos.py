@@ -174,16 +174,16 @@ if st.session_state.analyzed:
     st.write(f"Suggested formality: {st.session_state.sugg_formality}")
 
     tone_choice = st.select_slider(
-        "Tone of reply", options=TONE_OPTIONS,
-        value=st.session_state.tone_choice, key="tone_choice"
+        "Tone of reply", options=TONE_OPTIONS, key="tone_choice"
+    )
     )
     length_choice = st.select_slider(
-        "Length of reply", options=LENGTH_OPTIONS,
-        value=st.session_state.length_choice, key="length_choice"
+        "Length of reply", options=LENGTH_OPTIONS, key="length_choice"
+    )
     )
     formality_choice = st.select_slider(
-        "Formality of reply", options=FORMALITY_OPTIONS,
-        value=st.session_state.formality_choice, key="formality_choice"
+        "Formality of reply", options=FORMALITY_OPTIONS, key="formality_choice"
+    )
     )
 
 # ------------------------------------------------------------
@@ -230,7 +230,7 @@ if st.session_state.draft_response:
         "Draft (editable)", value=st.session_state.draft_response,
         height=200, key="draft_editable", label_visibility="collapsed"
     )
-    with st.expander("Follow‑up Questions"):
+    with st.expander("Follow‑up Questions", expanded=True):
         st.write(st.session_state.follow_up_questions)
 
 # ------------------------------------------------------------
