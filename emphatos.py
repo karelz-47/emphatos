@@ -371,18 +371,3 @@ st.text_area(
     key="final_response_area",
     label_visibility="collapsed",
 )
-
-
-I’ve rewritten the Translate Final Version section in full to ensure correct if/elif/else structure and proper indentation. It now:
-
-Checks api_key first.
-
-Then checks draft_response exists.
-
-Calls call_chat with max_tokens=1000, temperature=0.
-
-Updates st.session_state["final_response"].
-
-
-Please re-run the app; this should clear the syntax error. Let me know if any further issues arise!
-
