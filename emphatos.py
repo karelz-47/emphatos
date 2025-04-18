@@ -1,36 +1,47 @@
-"""Empathos – streamlined Streamlit front‑end
-All widgets now have non‑empty labels (hidden if necessary) so Streamlit ≥1.33
-shows no accessibility warnings. Minor defensive tweaks included.
+"""Empathos – Streamlined Streamlit Front‑End with Manual Analysis Trigger
+Features:
+1. Manual "Analyze Review" button for sentiment, length, formality detection.
+2. Display of detected vs. suggested parameters (words only).
+3. Select‑sliders for Tone, Length, Formality with text options.
+4. Improved follow‑up questions aimed at the operator when requests are unprocessed.
 """
 
 from __future__ import annotations
-
 import json
 import streamlit as st
 from openai import OpenAI
 
 # --------------------------------------------------------------
-# Constants & helper mappings
+# Constants & mappings
 # --------------------------------------------------------------
-TONE_LABELS = {-5: "Very Apologetic", 0: "Neutral", 5: "Very Enthusiastic"}
-LENGTH_LABELS = {-5: "Very Concise", 0: "Balanced", 5: "Very Detailed"}
-FORMALITY_LABELS = {-5: "Casual", 0: "Professional", 5: "Formal"}
+TONE_OPTIONS = ["Very Apologetic", "Apologetic", "Neutral", "Enthusiastic", "Very Enthusiastic"]
+TONE_MAP = {opt: val for opt, val in zip(TONE_OPTIONS, [-5, -3, 0, 3, 5])}
+
+LENGTH_OPTIONS = ["Very Concise", "Concise", "Balanced", "Detailed", "Very Detailed"]
+LENGTH_MAP = {opt: val for opt, val in zip(LENGTH_OPTIONS, [-5, 0, 5, 8, 10])}
+# (internal numeric not used except prompt variability)
+
+FORMALITY_OPTIONS = ["Very Casual", "Casual", "Professional", "Formal", "Very Formal"]
+FORMALITY_MAP = {opt: val for opt, val in zip(FORMALITY_OPTIONS, [-5, -3, 0, 3, 5])}
 
 # --------------------------------------------------------------
-# Session-state initialization
+# Session‐state initialization
 # --------------------------------------------------------------
-for key in ("draft_response", "follow_up_questions", "final_response"):
-    st.session_state.setdefault(key, "")
+for key in ("draft_response", "follow_up_questions", "final_response",
+            "det_sentiment", "det_length", "det_formality",
+            "sugg_tone", "sugg_length", "sugg_formality",
+            "analyzed"):
+    st.session_state.setdefault(key, "" if key.startswith("det_") or key.startswith("sugg_") else False)
 
 # --------------------------------------------------------------
-# Page config
+# Page config and title
 # --------------------------------------------------------------
 st.set_page_config(page_title="Empathos", layout="centered")
 st.title("Empathos")
 st.subheader("Your Voice, Their Peace of Mind")
 
 # --------------------------------------------------------------
-# 1  User inputs
+# 1. User inputs
 # --------------------------------------------------------------
 client_review = st.text_area(
     label="Policyholder’s Review or Comment",
@@ -40,7 +51,7 @@ client_review = st.text_area(
 )
 insights = st.text_input(
     label="Additional Context (optional)",
-    placeholder="E.g. policy number, adviser name…",
+    placeholder="E.g. policy number, advisor name…",
     key="insights",
 )
 api_key = st.text_input(
@@ -50,317 +61,175 @@ api_key = st.text_input(
     key="api_key",
 )
 
-# Guard against missing key early
-if api_key == "":
-    st.warning("Enter your OpenAI API key to enable analysis and drafting.")
-
 # --------------------------------------------------------------
-# 2  Sentiment, length & formality analysis
+# 2. Analysis trigger
 # --------------------------------------------------------------
+if st.button("Analyze Review"):
+    if not client_review.strip():
+        st.error("Please enter a policyholder review to analyze.")
+    elif not api_key:
+        st.error("Please enter your OpenAI API key.")
+    else:
+        # Sentiment
+        @st.cache_data(ttl=3600)
+        def analyze_sentiment(text: str) -> float:
+            client = OpenAI(api_key=api_key)
+            msgs = [
+                {"role": "system", "content": "Return one number between -1 and 1 for sentiment."},
+                {"role": "user", "content": text},
+            ]
+            res = client.chat.completions.create(model="gpt-4.1-mini", messages=msgs, max_tokens=3)
+            try:
+                return float(res.choices[0].message.content.strip())
+            except:
+                return 0.0
 
-def call_chat(messages: list[dict[str, str]], *, model: str = "gpt-4.1-mini", max_tokens: int = 20, temperature: float = 0.0) -> str:
-    """Wrapper with basic error handling; returns empty string on failure."""
-    try:
-        client = OpenAI(api_key=api_key)
-        res = client.chat.completions.create(
-            model=model,
-            messages=messages,
-            max_tokens=max_tokens,
-            temperature=temperature,
+        polarity = analyze_sentiment(client_review)
+        st.session_state.det_sentiment = polarity
+        # map to label
+        if polarity <= -0.75:
+            label = "Very negative"
+        elif polarity <= -0.25:
+            label = "Negative"
+        elif polarity < 0.25:
+            label = "Neutral"
+        elif polarity < 0.75:
+            label = "Positive"
+        else:
+            label = "Very positive"
+        st.session_state.sugg_tone = TONE_OPTIONS[2] if label == "Neutral" else (
+            TONE_OPTIONS[0] if label == "Very negative" else
+            TONE_OPTIONS[1] if label == "Negative" else
+            TONE_OPTIONS[3] if label == "Positive" else
+            TONE_OPTIONS[4]
         )
-        return res.choices[0].message.content.strip()
-    except Exception as exc:
-        st.error(f"OpenAI error: {exc}")
-        return ""[0].message.content.strip()
-    except Exception as exc:
-        st.error(f"OpenAI error: {exc}")
-        return ""
 
-@st.cache_data(ttl=3600, show_spinner=False)
-def analyze_sentiment(review: str) -> float:
-    messages = [
-        {"role": "system", "content": "Respond with one number between -1 and 1."},
-        {"role": "user", "content": review},
-    ]
-    try:
-        return float(call_chat(messages))
-    except ValueError:
-        return 0.0
+        # Length detection
+        count = len(client_review.split())
+        st.session_state.det_length = f"{count} words"
+        # simple buckets
+        st.session_state.sugg_length = (
+            LENGTH_OPTIONS[0] if count < 20 else
+            LENGTH_OPTIONS[1] if count < 50 else
+            LENGTH_OPTIONS[2] if count < 100 else
+            LENGTH_OPTIONS[3] if count < 200 else
+            LENGTH_OPTIONS[4]
+        )
 
-@st.cache_data(ttl=3600, show_spinner=False)
-def analyze_formality(review: str) -> str:
-    messages = [
-        {"role": "system", "content": (
-            "Classify the style as 'casual', 'neutral', or 'formal' and respond with the single word only."
-        )},
-        {"role": "user", "content": review},
-    ]
-    return call_chat(messages).lower()
+        # Formality detection
+        @st.cache_data(ttl=3600)
+        def detect_formality(text: str) -> str:
+            client = OpenAI(api_key=api_key)
+            msgs = [
+                {"role": "system", "content": "Label style as 'casual', 'neutral', or 'formal'."},
+                {"role": "user", "content": text},
+            ]
+            res = client.chat.completions.create(model="gpt-4.1-mini", messages=msgs, max_tokens=3)
+            return res.choices[0].message.content.lower().strip()
 
-
-def sentiment_label(score: float) -> str:
-    if score <= -0.75:
-        return "Very negative"
-    if score <= -0.25:
-        return "Negative"
-    if score < 0.25:
-        return "Neutral"
-    if score < 0.75:
-        return "Positive"
-    return "Very positive"
-
-
-def map_tone_slider(p: float) -> int:
-    if p <= -0.75:
-        return -5
-    if p <= -0.25:
-        return -3
-    if p < 0.25:
-        return 0
-    if p < 0.75:
-        return 3
-    return 5
-
-
-def map_length_slider(word_count: int) -> int:
-    if word_count <= 30:
-        return -5
-    if word_count <= 80:
-        return 0
-    return 5
-
-
-def map_formality_slider(formality: str) -> int:
-    return {"casual": -5, "neutral": 0, "formal": 5}.get(formality, 0)
+        form = detect_formality(client_review)
+        st.session_state.det_formality = form.title()
+        st.session_state.sugg_formality = (
+            FORMALITY_OPTIONS[0] if form == "casual" else
+            FORMALITY_OPTIONS[2] if form == "neutral" else
+            FORMALITY_OPTIONS[3]
+        )
+        st.session_state.analyzed = True
 
 # --------------------------------------------------------------
-# 3  Compute defaults & display sentiment
+# 3. Show detected vs suggested
 # --------------------------------------------------------------
-if client_review and api_key:
-    polarity = analyze_sentiment(client_review)
-    default_tone = map_tone_slider(polarity)
+if st.session_state.analyzed:
+    st.markdown(f"**Detected sentiment:** {st.session_state.det_sentiment:+.2f} ({label})")
+    st.markdown(f"**Suggested tone:** {st.session_state.sugg_tone}")
+    st.markdown(f"**Detected length:** {st.session_state.det_length}")
+    st.markdown(f"**Suggested length:** {st.session_state.sugg_length}")
+    st.markdown(f"**Detected formality:** {st.session_state.det_formality}")
+    st.markdown(f"**Suggested formality:** {st.session_state.sugg_formality}")
 
-    word_count = len(client_review.split())
-    default_length = map_length_slider(word_count)
-
-    form_style = analyze_formality(client_review)
-    default_formality = map_formality_slider(form_style)
-
-    st.markdown(
-        f"**Detected sentiment:** {polarity:+.2f} … {sentiment_label(polarity)}"
+    # 4. Sliders (text select)
+    tone_choice = st.select_slider(
+        "Tone of reply", options=TONE_OPTIONS, value=st.session_state.sugg_tone
     )
-else:
-    default_tone = default_length = default_formality = 0
+    length_choice = st.select_slider(
+        "Length of reply", options=LENGTH_OPTIONS, value=st.session_state.sugg_length
+    )
+    formality_choice = st.select_slider(
+        "Formality of reply", options=FORMALITY_OPTIONS, value=st.session_state.sugg_formality
+    )
 
 # --------------------------------------------------------------
-# 4  Control sliders
+# 5. Generate draft
 # --------------------------------------------------------------
-
-tone_value = st.slider(
-    label="Tone",
-    min_value=-5,
-    max_value=5,
-    step=1,
-    value=default_tone,
-    help="Adjust emotional tone of reply",
-)
-st.markdown(f"⬆️ **Tone setting:** {TONE_LABELS.get(tone_value, tone_value)}")
-
-length_value = st.slider(
-    label="Length",
-    min_value=-5,
-    max_value=5,
-    step=1,
-    value=default_length,
-    help="Concise … Detailed",
-)
-st.markdown(f"⬆️ **Length setting:** {LENGTH_LABELS.get(length_value, length_value)}")
-
-formality_value = st.slider(
-    label="Formality",
-    min_value=-5,
-    max_value=5,
-    step=1,
-    value=default_formality,
-    help="Casual … Formal",
-)
-st.markdown(
-    f"⬆️ **Formality setting:** {FORMALITY_LABELS.get(formality_value, formality_value)}"
-)
-
-# --------------------------------------------------------------
-# 5  Draft generation
-# --------------------------------------------------------------
-
-def descriptor(val: int, mapping: dict[int, str]) -> str:
-    key = -5 if val < -2 else 5 if val > 2 else 0
-    return mapping[key]
-
-
 def generate_draft() -> None:
-    if not api_key:
-        st.error("OpenAI API key missing.")
-        return
-
-    client = OpenAI(api_key=api_key)
-
-    style_tone = descriptor(tone_value, TONE_LABELS).lower()
-    style_length = descriptor(length_value, LENGTH_LABELS).lower()
-    style_formality = descriptor(formality_value, FORMALITY_LABELS).lower()
-
-    base_words = 120
-    max_words = base_words + 40 * (length_value // 2)
-    max_words = max(30, max_words)
-    max_tokens = int(max_words * 2 + 100)
-
-    # Use triple-quoted f-string to avoid unterminated string issues
-    system_prompt = f"""You are a customer-service specialist for unit-linked life insurance.
-Write a reply that is {style_tone}, {style_length}, and written in a {style_formality} style.
-• Thank the policy-holder and restate only the issues they explicitly mention—no assumptions.
-• Explain or clarify those points using correct life-insurance terms (premium allocation, fund switch, surrender value, etc.).
-• Offer one concrete next step or contact, staying compliant (no return guarantees, no unlicensed advice).
-• Stay within ≈{max_words} words.
-
-Return only plain text in this format, with no JSON or code fences:
-===DRAFT===
-<the reply text>
-
-===QUESTIONS===
-- q1
-- q2
-...
-If there are no follow-up questions, write 'No follow-up questions.' exactly after '===QUESTIONS==='.
-"""
-
-    user_msg = (
-        f"Review: {client_review}"
-        f"Additional context: {insights if insights else '—'}"
+    tone_val = TONE_MAP.get(tone_choice, 0)
+    length_val = LENGTH_MAP.get(length_choice, 0)
+    form_val = FORMALITY_MAP.get(formality_choice, 0)
+    # compose system prompt
+    sys = (
+        "You are a customer-service specialist for unit-linked life insurance.\n"
+        f"Write a reply that is {tone_choice.lower()}, {length_choice.lower()}, and {formality_choice.lower()}.\n"
+        "If the review indicates a request hasn’t been processed, ask the operator to confirm receipt of that request, its current status, and expected completion time.\n"
+        "• Thank the policy-holder and restate only the issues mentioned.\n"
+        "• Explain using correct life-insurance terms.\n"
+        "• Offer a concrete next step or contact.\n"
     )
+    user = f"Review: {client_review}\nAdditional context: {insights or '—'}"
+    client = OpenAI(api_key=api_key)
+    res = client.chat.completions.create(
+        model="gpt-4.1", messages=[{"role":"system","content":sys},{"role":"user","content":user}],
+        max_tokens=300, temperature=0.9
+    )
+    out = res.choices[0].message.content.strip()
+    # parse follow-ups: any lines starting with '?'
+    lines = out.splitlines()
+    draft_lines = [l for l in lines if not l.startswith('?')]
+    qs = [l for l in lines if l.startswith('?')]
+    st.session_state.draft_response = "\n".join(draft_lines).strip()
+    if qs:
+        st.session_state.follow_up_questions = "\n".join(f"• {l[1:].strip()}" for l in qs)
+    else:
+        st.session_state.follow_up_questions = "No follow-up questions."
 
-    try:
-        res = client.chat.completions.create(
-            model="gpt-4.1",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_msg},
-            ],
-            max_tokens=max_tokens,
-            temperature=0.9,
-        )
-        raw_out = res.choices[0].message.content
-        # Parse delimiters
-        if "===DRAFT===" in raw_out and "===QUESTIONS===" in raw_out:
-            draft_part, rest = raw_out.split("===QUESTIONS===", 1)
-            draft_text = draft_part.replace("===DRAFT===", "").strip()
-            qs_part = rest.strip()
-            if qs_part.lower().startswith("no follow-up questions"):
-                follow_up = "No follow-up questions."
-            else:
-                lines = [line.strip()[2:].strip() for line in qs_part.splitlines() if line.strip().startswith("- ")]
-                follow_up = "".join(f"• {q}" for q in lines) if lines else "No follow-up questions."
-            st.session_state["draft_response"] = draft_text
-            st.session_state["follow_up_questions"] = follow_up
-        else:
-            # Fallback: show all output as draft
-            st.session_state["draft_response"] = raw_out.strip()
-            st.session_state["follow_up_questions"] = "No follow-up questions."
-    except Exception as exc:
-        st.error(f"Error generating draft: {exc}")
-        st.session_state["draft_response"] = ""
-        st.session_state["follow_up_questions"] = ""
+if st.button("Generate Draft") and st.session_state.analyzed:
+    if not api_key:
+        st.error("API key missing.")
+    else:
+        generate_draft()
 
 # --------------------------------------------------------------
-# 6  Action buttons
+# 6. Display draft & questions
 # --------------------------------------------------------------
-
-col1, col2 = st.columns(2)
-with col1:
-    if st.button("Generate Draft"):
-        if not client_review.strip():
-            st.error("Please enter a policyholder review.")
-        elif not api_key:
-            st.error("Please enter your OpenAI API key.")
-        else:
-            with st.spinner("Generating draft…"):
-                generate_draft()
-with col2:
-    if st.button("Regenerate Draft"):
-        if not client_review.strip():
-            st.error("Please enter a policyholder review.")
-        elif not api_key:
-            st.error("Please enter your OpenAI API key.")
-        else:
-            with st.spinner("Regenerating draft…"):
-                generate_draft()
+if st.session_state.draft_response:
+    st.header("Draft Response")
+    st.text_area("Draft (editable)", value=st.session_state.draft_response, height=200)
+    with st.expander("Follow‑up Questions"):
+        st.write(st.session_state.follow_up_questions)
 
 # --------------------------------------------------------------
-# 7  Display draft & questions
-# --------------------------------------------------------------
-
-st.header("Draft Response (Editable)")
-st.text_area(
-    label="draft_response_display",
-    value=st.session_state["draft_response"],
-    height=220,
-    key="draft_response_area",
-    label_visibility="collapsed",
-)
-
-with st.expander("Follow-up Questions"):
-    st.write(st.session_state["follow_up_questions"])
-
-# --------------------------------------------------------------
-# 8  Translate final version
+# 7. Translation
 # --------------------------------------------------------------
 st.header("Translate Final Version")
-final_language = st.selectbox(
-    label="Language of Final Version:",
-    options=[
-        "English",
-        "Slovak",
-        "Italian",
-        "Icelandic",
-        "Hungarian",
-        "German",
-        "Czech",
-        "Polish",
-        "Vulcan",
-    ],
-    key="final_language",
-)
-
-if st.button("Translate Final Version"):
-    if not api_key:
-        st.error("Please enter your OpenAI API key.")
-    elif not st.session_state["draft_response"].strip():
-        st.error("Please generate or edit the draft response first.")
-    else:
-        translator_prompt = (
-            f"You are a professional translator. Render the text into {final_language}, "
-            "using clear, natural wording and the insurance terms typically used in that language—even if phrasing differs from the original. "
-            "Keep meaning, tone, and compliance intact."
-        )
-        translated = call_chat(
-            [
-                {"role": "system", "content": translator_prompt},
-                {"role": "user", "content": st.session_state["draft_response"]},
-            ],
-            max_tokens=1000,
-            temperature=0,
-        )
-        st.session_state["final_response"] = translated
+final_language = st.selectbox("Language of Final Version:", [
+    "English","Slovak","Italian","Icelandic","Hungarian","German","Czech","Polish","Vulcan"
+])
+if st.button("Translate Final Version") and st.session_state.draft_response:
+    translator_sys = (
+        f"You are a professional translator. Render the text into {final_language}, "
+        "using clear, natural wording and the insurance terms typically used in that language."
+    )
+    client = OpenAI(api_key=api_key)
+    res = client.chat.completions.create(
+        model="gpt-4.1-mini", messages=[
+            {"role":"system","content":translator_sys},
+            {"role":"user","content":st.session_state.draft_response}
+        ], max_tokens=1000, temperature=0
+    )
+    st.session_state.final_response = res.choices[0].message.content.strip()
 
 # --------------------------------------------------------------
-# 9  Display final response
+# 8. Display final translation
 # --------------------------------------------------------------
-
-
-
-st.subheader("Final Response (Translated)")
-st.text_area(
-    label="final_response_display",  # non-empty label
-    value=st.session_state["final_response"],
-    height=200,
-    key="final_response_area",
-    label_visibility="collapsed",
-)
+if st.session_state.final_response:
+    st.header("Final Response (Translated)")
+    st.text_area("Translation", value=st.session_state.final_response, height=200)
