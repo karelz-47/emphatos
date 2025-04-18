@@ -312,7 +312,6 @@ with st.expander("Follow-up Questions"):
 # --------------------------------------------------------------
 # 8  Translate final version
 # --------------------------------------------------------------
-
 st.header("Translate Final Version")
 final_language = st.selectbox(
     label="Language of Final Version:",
@@ -331,10 +330,10 @@ final_language = st.selectbox(
 )
 
 if st.button("Translate Final Version"):
-    if not st.session_state["draft_response"].strip():
-        st.error("Please generate or edit the draft response first.")
-    elif not api_key:
+    if not api_key:
         st.error("Please enter your OpenAI API key.")
+    elif not st.session_state["draft_response"].strip():
+        st.error("Please generate or edit the draft response first.")
     else:
         translator_prompt = (
             f"You are a professional translator. Render the text into {final_language}, "
@@ -353,29 +352,16 @@ if st.button("Translate Final Version"):
 
 # --------------------------------------------------------------
 # 9  Display final response
-# --------------------------------------------------------------["draft_response"].strip():
-        st.error("Please generate or edit the draft response first.")
-    elif not api_key:
-        st.error("Please enter your OpenAI API key.")
-    else:
-        translator_prompt = (
-            f"You are a professional translator. Render the text into {final_language}, "
-            "using clear, natural wording and the insurance terms typically used in that language—even if phrasing differs from the original. "
-            "Keep meaning, tone, and compliance intact."
-        )
-                translated = call_chat(
-            [
-                {"role": "system", "content": translator_prompt},
-                {"role": "user", "content": st.session_state["draft_response"]},
-            ],
-            max_tokens=1000,
-            temperature=0,
-        )
-        st.session_state["final_response"] = translated
+# --------------------------------------------------------------
+st.subheader("Final Response (Translated)")
+st.text_area(
+    label="Final Response",
+    value=st.session_state["final_response"],
+    height=200,
+    key="final_response_area",
+    label_visibility="collapsed",
+)
 
-# --------------------------------------------------------------
-# 9  Display final response
-# --------------------------------------------------------------
 
 st.subheader("Final Response (Translated)")
 st.text_area(
@@ -387,5 +373,16 @@ st.text_area(
 )
 
 
-I fixed the misplaced indent in the Translate Final Version block so that the translated = call_chat(...) and subsequent state update align properly under the else:. Please pull the update, restart your app, and confirm the translation now completes without indentation errors.
+I’ve rewritten the Translate Final Version section in full to ensure correct if/elif/else structure and proper indentation. It now:
+
+Checks api_key first.
+
+Then checks draft_response exists.
+
+Calls call_chat with max_tokens=1000, temperature=0.
+
+Updates st.session_state["final_response"].
+
+
+Please re-run the app; this should clear the syntax error. Let me know if any further issues arise!
 
