@@ -340,8 +340,8 @@ if st.button("Translate Final Version"):
             f"You are a professional translator. Render the text into {final_language}, "
             "using clear, natural wording and the insurance terms typically used in that language—even if phrasing differs from the original. "
             "Keep meaning, tone, and compliance intact."
-        )
-            translated = call_chat(
+                            )
+                translated = call_chat(
             [
                 {"role": "system", "content": translator_prompt},
                 {"role": "user", "content": st.session_state["draft_response"]},
