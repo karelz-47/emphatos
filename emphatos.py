@@ -176,14 +176,11 @@ if st.session_state.analyzed:
     tone_choice = st.select_slider(
         "Tone of reply", options=TONE_OPTIONS, key="tone_choice"
     )
-    )
     length_choice = st.select_slider(
         "Length of reply", options=LENGTH_OPTIONS, key="length_choice"
     )
-    )
     formality_choice = st.select_slider(
         "Formality of reply", options=FORMALITY_OPTIONS, key="formality_choice"
-    )
     )
 
 # ------------------------------------------------------------
