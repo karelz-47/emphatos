@@ -257,8 +257,7 @@ If there are no follow-up questions, write 'No follow-up questions.' exactly aft
                 follow_up = "No follow-up questions."
             else:
                 lines = [line.strip()[2:].strip() for line in qs_part.splitlines() if line.strip().startswith("- ")]
-                follow_up = "
-".join(f"• {q}" for q in lines) if lines else "No follow-up questions."
+                follow_up = "".join(f"• {q}" for q in lines) if lines else "No follow-up questions."
             st.session_state["draft_response"] = draft_text
             st.session_state["follow_up_questions"] = follow_up
         else:
