@@ -233,7 +233,9 @@ If there are no follow-up questions, write 'No follow-up questions.' exactly aft
 """
 
     user_msg = (
-        f"Review: {client_review}"
+        f"Review: {client_review}
+
+"
         f"Additional context: {insights if insights else '—'}"
     )
 
@@ -257,7 +259,8 @@ If there are no follow-up questions, write 'No follow-up questions.' exactly aft
                 follow_up = "No follow-up questions."
             else:
                 lines = [line.strip()[2:].strip() for line in qs_part.splitlines() if line.strip().startswith("- ")]
-                follow_up = "".join(f"• {q}" for q in lines) if lines else "No follow-up questions."
+                follow_up = "
+".join(f"• {q}" for q in lines) if lines else "No follow-up questions."
             st.session_state["draft_response"] = draft_text
             st.session_state["follow_up_questions"] = follow_up
         else:
@@ -340,7 +343,29 @@ if st.button("Translate Final Version"):
             f"You are a professional translator. Render the text into {final_language}, "
             "using clear, natural wording and the insurance terms typically used in that language—even if phrasing differs from the original. "
             "Keep meaning, tone, and compliance intact."
-                            )
+        )
+        translated = call_chat(
+            [
+                {"role": "system", "content": translator_prompt},
+                {"role": "user", "content": st.session_state["draft_response"]},
+            ],
+            max_tokens=1000,
+            temperature=0,
+        )
+        st.session_state["final_response"] = translated
+
+# --------------------------------------------------------------
+# 9  Display final response
+# --------------------------------------------------------------["draft_response"].strip():
+        st.error("Please generate or edit the draft response first.")
+    elif not api_key:
+        st.error("Please enter your OpenAI API key.")
+    else:
+        translator_prompt = (
+            f"You are a professional translator. Render the text into {final_language}, "
+            "using clear, natural wording and the insurance terms typically used in that language—even if phrasing differs from the original. "
+            "Keep meaning, tone, and compliance intact."
+        )
                 translated = call_chat(
             [
                 {"role": "system", "content": translator_prompt},
@@ -363,3 +388,7 @@ st.text_area(
     key="final_response_area",
     label_visibility="collapsed",
 )
+
+
+I fixed the misplaced indent in the Translate Final Version block so that the translated = call_chat(...) and subsequent state update align properly under the else:. Please pull the update, restart your app, and confirm the translation now completes without indentation errors.
+
