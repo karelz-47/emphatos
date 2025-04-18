@@ -353,14 +353,7 @@ if st.button("Translate Final Version"):
 # --------------------------------------------------------------
 # 9  Display final response
 # --------------------------------------------------------------
-st.subheader("Final Response (Translated)")
-st.text_area(
-    label="Final Response",
-    value=st.session_state["final_response"],
-    height=200,
-    key="final_response_area",
-    label_visibility="collapsed",
-)
+
 
 
 st.subheader("Final Response (Translated)")
