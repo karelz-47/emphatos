@@ -202,7 +202,13 @@ if st.button("Generate Draft") and st.session_state.analyzed:
 # --------------------------------------------------------------
 if st.session_state.draft_response:
     st.header("Draft Response")
-    st.text_area("Draft (editable)", value=st.session_state.draft_response, height=200)
+    st.text_area(
+    "Translation",
+    value=st.session_state.final_response,
+    height=200,
+    key="translation_area",
+    label_visibility="collapsed",
+)
     with st.expander("Follow‑up Questions"):
         st.write(st.session_state.follow_up_questions)
 
