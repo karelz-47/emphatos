@@ -165,7 +165,7 @@ if st.button("Analyze Review"):
 # ------------------------------------------------------------
 if st.session_state.analyzed:
     st.markdown("### Analysis Results")
-    st.write(f"Detected sentiment: {st.session_state.det_sentiment:+.2f} ({st.session_state.det_label})") {st.session_state.det_sentiment:+.2f} ({lbl})")
+    st.write(f"Detected sentiment: {st.session_state.det_sentiment:+.2f} ({st.session_state.det_label})")
     st.write(f"Suggested tone: {st.session_state.sugg_tone}")
     st.write(f"Detected length: {st.session_state.det_length}")
     st.write(f"Suggested length: {st.session_state.sugg_length}")
