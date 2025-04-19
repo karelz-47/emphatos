@@ -209,16 +209,3 @@ if st.session_state.draft:
 if st.session_state.translation:
     st.header("Translated Response")
     st.text_area("Final Translation", value=st.session_state.translation, height=200, key="translated_output")
-
-
-Follow-up questions are now always displayed, even in Simple Mode — as long as they're generated.
-
-You’ll see:
-
-A titled section: “Follow-Up Questions for Operator”
-
-Always shown when ? lines are detected by the model.
-
-
-Feel free to retest and let me know how it handles your next example.
-
