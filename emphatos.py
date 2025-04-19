@@ -134,7 +134,7 @@ if st.button("Generate Draft"):
         - Restate core issue briefly and offer next steps.
         - For public responses, be concise, polite, and careful of sensitive info.
         - For private responses, be more detailed and action-oriented.
-        - If the review suggests something is still pending, start the reply with a line beginning with '?'.
+        - If the review includes numerical claims or complaints about specific product features (e.g. fee amounts), start the reply with a line beginning with '?' asking the operator to verify the specific product terms. Also use '?' if the request appears unresolved.
         """
 
         user_message = f"Review: {client_review}\nContext: {insights or '-'}"
@@ -160,9 +160,13 @@ if st.button("Generate Draft"):
 if st.session_state.draft:
     st.markdown("### Analysis Summary")
     st.write(f"**Sentiment:** {st.session_state.sentiment}")
-    st.write(f"**Formality:** {st.session_state.formality}")
+    st.caption("Sentiment is the emotional tone of the review — this helps shape the empathy level and tone of the reply.")
+    st.write(f"**Formality (Detected):** {st.session_state.formality}")
+    st.caption("This identifies whether the customer wrote casually, neutrally, or formally. It guides the tone and structure of the response.")
     st.write(f"**Complaint Slant:** {st.session_state.slant}")
-    st.write(f"**Length:** {st.session_state.length_label}")
+    st.caption("The slant identifies whether the customer focuses on what went wrong or the losses they suffered — this affects whether the response focuses on empathy or action.")
+    st.write(f"**Length (Detected):** {st.session_state.length_label}")
+    st.caption("This estimates how long and detailed the customer’s message was, suggesting the expected depth of your reply.")
     st.write(f"**Detected Language:** {st.session_state.lang}")
 
     if st.session_state.mode == "Advanced":
@@ -174,16 +178,22 @@ if st.session_state.draft:
     st.header("Draft Response")
     st.text_area("Editable Draft", value=st.session_state.draft, height=200, key="draft_edit")
 
+    st.markdown("### Parameters Used for Draft")
+    st.write(f"**Tone:** {st.session_state.tone_choice if st.session_state.mode == 'Advanced' else 'Auto: Neutral (based on sentiment)'}")
+    st.write(f"**Formality:** {st.session_state.formality_choice if st.session_state.mode == 'Advanced' else 'Auto: ' + st.session_state.formality}")
+    st.write(f"**Length:** {st.session_state.length_choice if st.session_state.mode == 'Advanced' else 'Auto: ' + st.session_state.length_label}")
+
     if st.session_state.followups:
-        with st.expander("Follow-Up Questions for Operator"):
-            for q in st.session_state.followups:
+    st.markdown("### Follow-Up Questions for Operator")
+    with st.expander("Click to review", expanded=True):
+        for q in st.session_state.followups:
                 st.markdown(f"- {q}")
 
     default_lang = st.session_state.lang if st.session_state.lang in LANGUAGE_OPTIONS else "English"
     final_language = st.selectbox("Translate to:", options=LANGUAGE_OPTIONS, index=LANGUAGE_OPTIONS.index(default_lang))
 
     if st.button("Translate Final Version"):
-        translation_prompt = f"You are a translator. Translate the reply into {final_language}, using clear language and insurance-specific terms."
+        translation_prompt = f"You are a translator. Translate the reply into {final_language}, using accurate grammar and terminology used in insurance and financial services in that language. Prioritize clear, formal phrasing and ensure the meaning and tone match the original English response."
         client = OpenAI(api_key=api_key)
         trans_res = client.chat.completions.create(
             model="gpt-4.1-mini",
@@ -199,3 +209,16 @@ if st.session_state.draft:
 if st.session_state.translation:
     st.header("Translated Response")
     st.text_area("Final Translation", value=st.session_state.translation, height=200, key="translated_output")
+
+
+Follow-up questions are now always displayed, even in Simple Mode — as long as they're generated.
+
+You’ll see:
+
+A titled section: “Follow-Up Questions for Operator”
+
+Always shown when ? lines are detected by the model.
+
+
+Feel free to retest and let me know how it handles your next example.
+
