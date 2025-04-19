@@ -184,9 +184,9 @@ if st.session_state.draft:
     st.write(f"**Length:** {st.session_state.length_choice if st.session_state.mode == 'Advanced' else 'Auto: ' + st.session_state.length_label}")
 
     if st.session_state.followups:
-    st.markdown("### Follow-Up Questions for Operator")
-    with st.expander("Click to review", expanded=True):
-        for q in st.session_state.followups:
+        st.markdown("### Follow-Up Questions for Operator")
+        with st.expander("Click to review", expanded=True):
+         for q in st.session_state.followups:
                 st.markdown(f"- {q}")
 
     default_lang = st.session_state.lang if st.session_state.lang in LANGUAGE_OPTIONS else "English"
