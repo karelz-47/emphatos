@@ -13,15 +13,15 @@ st.subheader("Your Voice, Their Peace of Mind")
 # ------------------------------------------------------------
 LANGUAGE_OPTIONS = ["English","Slovak","Italian","Icelandic","Hungarian","German","Czech","Polish","Vulcan"]
 LENGTH_CATEGORIES = [(0, 20, "Very Concise"), (21, 50, "Concise"), (51, 100, "Balanced"), (101, 200, "Detailed"), (201, 9999, "Very Detailed")]
+TONE_OPTIONS = ["Very Apologetic", "Apologetic", "Neutral", "Enthusiastic", "Very Enthusiastic"]
+FORMALITY_OPTIONS = ["Very Casual", "Casual", "Neutral", "Professional", "Very Formal"]
+LENGTH_OPTIONS = ["Very Concise", "Concise", "Balanced", "Detailed", "Very Detailed"]
 
 # ------------------------------------------------------------
-# Helper functions
+# Helper functions (non-cached due to unhashable OpenAI clients)
 # ------------------------------------------------------------
-def get_openai_client(api_key: str):
-    return OpenAI(api_key=api_key)
-
-@st.cache_data(ttl=3600)
-def analyze_sentiment(text: str, client) -> str:
+def analyze_sentiment(text: str, api_key: str) -> str:
+    client = OpenAI(api_key=api_key)
     prompt = """Label the sentiment of the following customer message as one of:
     'Very negative', 'Negative', 'Neutral', 'Positive', 'Very positive'.
     Return only the label."""
@@ -32,8 +32,8 @@ def analyze_sentiment(text: str, client) -> str:
     )
     return res.choices[0].message.content.strip()
 
-@st.cache_data(ttl=3600)
-def detect_formality(text: str, client) -> str:
+def detect_formality(text: str, api_key: str) -> str:
+    client = OpenAI(api_key=api_key)
     prompt = """Classify the formality of this message as 'Casual', 'Neutral', or 'Formal'."""
     res = client.chat.completions.create(
         model="gpt-4.1",
@@ -42,8 +42,8 @@ def detect_formality(text: str, client) -> str:
     )
     return res.choices[0].message.content.strip()
 
-@st.cache_data(ttl=3600)
-def classify_slant(text: str, client) -> str:
+def classify_slant(text: str, api_key: str) -> str:
+    client = OpenAI(api_key=api_key)
     prompt = (
         "Analyze the customer's complaint and classify it as:\n"
         "- 'Failure-focused' (emphasizing what went wrong),\n"
@@ -58,8 +58,8 @@ def classify_slant(text: str, client) -> str:
     )
     return res.choices[0].message.content.strip()
 
-@st.cache_data(ttl=3600)
-def detect_language(text: str, client) -> str:
+def detect_language(text: str, api_key: str) -> str:
+    client = OpenAI(api_key=api_key)
     prompt = "Detect the language of the following text. Return only the name of the language in English."
     res = client.chat.completions.create(
         model="gpt-4.1-mini",
@@ -71,30 +71,39 @@ def detect_language(text: str, client) -> str:
 # ------------------------------------------------------------
 # Session state initialization
 # ------------------------------------------------------------
-for key in ["sentiment", "formality", "slant", "lang", "draft", "translation", "length_label", "followups"]:
-    if key not in st.session_state:
-        st.session_state[key] = ""
+def init_session():
+    keys_defaults = {
+        "sentiment": "", "formality": "", "slant": "", "lang": "",
+        "draft": "", "translation": "", "length_label": "", "followups": [],
+        "mode": "Simple", "tone_choice": "Neutral", "formality_choice": "Professional", "length_choice": "Balanced"
+    }
+    for k, v in keys_defaults.items():
+        if k not in st.session_state:
+            st.session_state[k] = v
+
+init_session()
+
+# ------------------------------------------------------------
+# Mode Toggle
+# ------------------------------------------------------------
+st.radio("Mode", ["Simple", "Advanced"], key="mode", horizontal=True)
 
 # ------------------------------------------------------------
 # User Inputs
 # ------------------------------------------------------------
 client_review = st.text_area("Customer Review or Comment", height=140)
 insights = st.text_input("Additional Context (optional)")
-channel = st.radio("Type of Inquiry", ["Private (Email)", "Public (Review/Tweet)"])
+channel = st.radio("Type of Inquiry", ["Private (Email)", "Public (Review/Tweet)"], key="channel_type")
 api_key = st.text_input("OpenAI API Key", type="password")
 
-# ------------------------------------------------------------
-# Generate Draft Response
-# ------------------------------------------------------------
 if st.button("Generate Draft"):
     if not client_review.strip() or not api_key:
         st.error("Please fill in the review and API key.")
     else:
-        client = get_openai_client(api_key)
-        st.session_state.sentiment = analyze_sentiment(client_review, client)
-        st.session_state.formality = detect_formality(client_review, client)
-        st.session_state.slant = classify_slant(client_review, client)
-        st.session_state.lang = detect_language(client_review, client)
+        st.session_state.sentiment = analyze_sentiment(client_review, api_key)
+        st.session_state.formality = detect_formality(client_review, api_key)
+        st.session_state.slant = classify_slant(client_review, api_key)
+        st.session_state.lang = detect_language(client_review, api_key)
 
         word_count = len(client_review.split())
         for lower, upper, label in LENGTH_CATEGORIES:
@@ -102,12 +111,19 @@ if st.button("Generate Draft"):
                 st.session_state.length_label = label
                 break
 
+        # Advanced Mode: use manual settings
+        tone = st.session_state.tone_choice if st.session_state.mode == "Advanced" else ""
+        formality = st.session_state.formality_choice if st.session_state.mode == "Advanced" else ""
+        length = st.session_state.length_choice if st.session_state.mode == "Advanced" else st.session_state.length_label
+
         system_prompt = f"""
         You are a customer service specialist in life insurance.
-        Respond to the customer message in a tone appropriate for a {channel.lower()}.
+        Respond to the customer message in a tone appropriate for a {st.session_state.channel_type.lower()}.
         Sentiment: {st.session_state.sentiment}
-        Formality: {st.session_state.formality}
+        Formality: {formality or st.session_state.formality}
         Complaint Slant: {st.session_state.slant}
+        Length: {length}
+        Tone: {tone or 'Neutral'}
 
         Guidelines:
         - Always be empathetic and professional.
@@ -122,6 +138,7 @@ if st.button("Generate Draft"):
         """
 
         user_message = f"Review: {client_review}\nContext: {insights or '-'}"
+        client = OpenAI(api_key=api_key)
         res = client.chat.completions.create(
             model="gpt-4.1",
             messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_message}],
@@ -138,7 +155,7 @@ if st.button("Generate Draft"):
         st.session_state.followups = followup_lines
 
 # ------------------------------------------------------------
-# Display Analysis
+# Display Analysis + Controls
 # ------------------------------------------------------------
 if st.session_state.draft:
     st.markdown("### Analysis Summary")
@@ -147,6 +164,11 @@ if st.session_state.draft:
     st.write(f"**Complaint Slant:** {st.session_state.slant}")
     st.write(f"**Length:** {st.session_state.length_label}")
     st.write(f"**Detected Language:** {st.session_state.lang}")
+
+    if st.session_state.mode == "Advanced":
+        st.select_slider("Tone of reply", options=TONE_OPTIONS, key="tone_choice")
+        st.select_slider("Length of reply", options=LENGTH_OPTIONS, key="length_choice")
+        st.select_slider("Formality of reply", options=FORMALITY_OPTIONS, key="formality_choice")
 
     st.markdown("---")
     st.header("Draft Response")
@@ -162,6 +184,7 @@ if st.session_state.draft:
 
     if st.button("Translate Final Version"):
         translation_prompt = f"You are a translator. Translate the reply into {final_language}, using clear language and insurance-specific terms."
+        client = OpenAI(api_key=api_key)
         trans_res = client.chat.completions.create(
             model="gpt-4.1-mini",
             messages=[{"role": "system", "content": translation_prompt}, {"role": "user", "content": st.session_state.draft}],
