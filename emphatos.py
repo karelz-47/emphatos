@@ -271,7 +271,8 @@ if st.session_state.draft:
 
     # -------- Follow‑ups ---------------------------------------------------
     if st.session_state.followups:
-        with st.expander("Questions that need operator input", expanded=True):
+        with st.expander("Questions that need operator input",
+                        expanded=(st.session_state.mode == "Simple")):
             for q in st.session_state.followups:
                 st.markdown(f"- {q}")
 
