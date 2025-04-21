@@ -1,19 +1,19 @@
-# Empathos – v2 (22 Apr 2025)  — emphasised follow‑ups + always‑visible panel
-# ---------------------------------------------------------------------------
+# Empathos – v2.1 (22 Apr 2025)  — operator pane shows only questions
+# -------------------------------------------------------------------
 import re
 import streamlit as st
 from openai import OpenAI
 
-# ---------------------------------------------------------------------------
+# -------------------------------------------------------------------
 # Page config
-# ---------------------------------------------------------------------------
+# -------------------------------------------------------------------
 st.set_page_config(page_title="Empathos", layout="centered")
 st.title("Empathos")
 st.subheader("Your voice, their peace of mind")
 
-# ---------------------------------------------------------------------------
+# -------------------------------------------------------------------
 # Constants
-# ---------------------------------------------------------------------------
+# -------------------------------------------------------------------
 LANGUAGE_OPTIONS = [
     "English", "Slovak", "Italian", "Icelandic",
     "Hungarian", "German", "Czech", "Polish", "Vulcan"
@@ -32,9 +32,9 @@ FORMALITY_OPTIONS = ["Very casual", "Casual", "Neutral",
 LENGTH_OPTIONS    = ["Very concise", "Concise", "Balanced",
                      "Detailed", "Very detailed"]
 
-# ---------------------------------------------------------------------------
+# -------------------------------------------------------------------
 # Helpers
-# ---------------------------------------------------------------------------
+# -------------------------------------------------------------------
 def info_field(label: str, value: str, tooltip: str) -> None:
     st.text_input(label, value=value, disabled=True, help=tooltip)
 
@@ -92,16 +92,15 @@ def detect_language(t, k):
         "Return only the language name in English.",
         t, k, model="gpt-4.1-mini")
 
-# ---------------------------------------------------------------------------
-# Session‑state defaults
-# ---------------------------------------------------------------------------
+# -------------------------------------------------------------------
+# Session defaults
+# -------------------------------------------------------------------
 def init_session():
     defaults = {
         "sentiment": "", "formality": "", "slant": "", "lang": "",
         "length_label": "", "tone_choice": "Neutral",
         "formality_choice": "Professional", "length_choice": "Balanced",
-        "draft": "", "followups": [], "raw_response": "", "translation": "",
-        "mode": "Simple"
+        "draft": "", "followups": [], "translation": "", "mode": "Simple"
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -109,9 +108,9 @@ def init_session():
 
 init_session()
 
-# ---------------------------------------------------------------------------
-# Mode & basic inputs
-# ---------------------------------------------------------------------------
+# -------------------------------------------------------------------
+# Mode & inputs
+# -------------------------------------------------------------------
 st.radio("Mode", ["Simple", "Advanced"], key="mode", horizontal=True)
 
 client_review = st.text_area(
@@ -130,14 +129,14 @@ st.radio("Channel", ["Email (private)", "Public post"],
 
 api_key = st.text_input("OpenAI API key", type="password")
 
-# ---------------------------------------------------------------------------
+# -------------------------------------------------------------------
 # Generate draft
-# ---------------------------------------------------------------------------
+# -------------------------------------------------------------------
 if st.button("Generate draft", type="primary"):
     if not client_review.strip() or not api_key:
         st.error("Please fill in the review and API key.")
     else:
-        # ---------- auto analysis -------------------------------------------------
+        # ---------- auto analysis ----------------------------------------
         st.session_state.sentiment = analyze_sentiment(client_review, api_key)
         st.session_state.formality = detect_formality(client_review, api_key)
         st.session_state.slant     = classify_slant(client_review, api_key)
@@ -148,36 +147,30 @@ if st.button("Generate draft", type="primary"):
         )
 
         tone, formality, length = get_desired()
-        channel_phrase = "private email" if "Email" in st.session_state.channel_type else "public response"
+        channel_phrase = ("private email"
+                          if "Email" in st.session_state.channel_type
+                          else "public response")
 
-        # ---------- UPDATED, follow‑up‑first system prompt ------------------------
+        # ---------- system prompt (follow‑up first) -----------------------
         system_prompt = f"""
-### 1. Decide on operator follow‑up questions  
-*Before you write the customer‑facing reply, think whether the operator needs to provide or verify any information (policy numbers, premium amounts, dates, KYC steps, product features, legal wording, escalation approval, etc.).*  
-• If **yes**, output each operator prompt on its own line starting with exactly **‘?’**.  
-• If **no**, output nothing that starts with ‘?’.  
+### 1. Operator follow‑up questions  
+If the operator must confirm or provide data (policy numbers, amounts, dates,
+escalation approval, product terms, legal text, KYC, etc.), write each prompt on
+its own line starting with **?**.  
+If no follow‑up is required, output no lines that start with ?.
 
-### 2. Write the reply to the customer  
-After the ‘?’ lines (if any), write the full response in **{channel_phrase}** style.
+### 2. Customer reply  
+After any ?‑lines, write the full reply in {channel_phrase} style.
 
-Use these signals for the reply:  
-• Detected sentiment: {st.session_state.sentiment}  
-• Detected formality: {formality}  
+Use these signals:  
+• Sentiment: {st.session_state.sentiment}  
+• Formality: {formality}  
 • Complaint slant: {st.session_state.slant}  
 • Desired length: {length}  
-• Desired tone: {tone}  
-
-Guidelines:  
-- Be empathetic and professional.  
-- Acknowledge the customer's emotion.  
-- If slant is 'Failure‑focused', emphasise apology; if 'Loss‑focused', emphasise remedy.  
-- Use clear insurance terminology.  
-- Restate the core issue briefly and offer next steps.  
-- Public replies: be concise, no sensitive info.  
-- Private replies: be detailed and action‑oriented.
+• Desired tone: {tone}
 """.strip()
 
-        # ---------- LLM call ------------------------------------------------------
+        # ---------- LLM call ---------------------------------------------
         client = OpenAI(api_key=api_key)
         completion = client.chat.completions.create(
             model="gpt-4.1",
@@ -189,11 +182,8 @@ Guidelines:
             max_tokens=650,
             temperature=0.9
         )
-        raw_response = completion.choices[0].message.content.strip()
-        st.session_state.raw_response = raw_response
 
-        # ---------- split into followups + draft ----------------------------------
-        lines = raw_response.splitlines()
+        lines = completion.choices[0].message.content.splitlines()
         draft_lines, followup_lines = [], []
 
         for raw in lines:
@@ -207,15 +197,15 @@ Guidelines:
 
         st.session_state.followups = followup_lines
         st.session_state.draft     = "\n".join(draft_lines).strip()
-        st.session_state.translation = ""   # reset previous translation
+        st.session_state.translation = ""   # reset translation
 
-# ---------------------------------------------------------------------------
-# Display analysis, parameters, draft
-# ---------------------------------------------------------------------------
+# -------------------------------------------------------------------
+# Display
+# -------------------------------------------------------------------
 if st.session_state.draft:
     tone, formality, length = get_desired()
 
-    # ---------- Summary & parameters -------------------------------------
+    # ---------- Summary & parameters -----------------------------------
     if st.session_state.mode == "Simple":
         col_sum, col_par = st.columns([3, 2])
         with col_sum:
@@ -235,7 +225,7 @@ if st.session_state.draft:
             info_field("Tone", tone, "Chosen automatically or by you.")
             info_field("Formality (reply)", formality, "Reply formality.")
             info_field("Length", length, "Reply length target.")
-    else:  # Advanced
+    else:
         st.subheader("Analysis summary")
         info_field("Sentiment", st.session_state.sentiment,
                    "Overall emotional tone of the customer's message.")
@@ -247,37 +237,36 @@ if st.session_state.draft:
                    "Approximate size of the customer's message.")
         info_field("Language", st.session_state.lang,
                    "Detected language of the original text.")
-
         st.markdown("#### Override parameters")
         st.select_slider("Desired tone", options=TONE_OPTIONS,
-                         key="tone_choice",
-                         help="Override the automatic tone, if you like.")
+                         key="tone_choice")
         st.select_slider("Reply length", options=LENGTH_OPTIONS,
-                         key="length_choice",
-                         help="How detailed should the answer be?")
+                         key="length_choice")
         st.select_slider("Formality level", options=FORMALITY_OPTIONS,
-                         key="formality_choice",
-                         help="Choose how casual or formal the reply sounds.")
+                         key="formality_choice")
         st.markdown("---")
 
-    # ---------- Draft response -------------------------------------------
+    # ---------- Draft ---------------------------------------------------
     st.header("Draft response")
     st.text_area("Editable draft",
                  key="draft_edit",
                  value=st.session_state.draft,
                  height=220)
 
-    # ---------- Follow‑up pane (always visible) --------------------------
-    st.markdown("### Operator follow‑up (raw)")
-    st.text_area(
-        label="Full LLM output (temporary debug view)",
-        value=st.session_state.raw_response,
-        height=200,
-        key="raw_view",
-        disabled=True
-    )
+    # ---------- Operator follow‑up questions ----------------------------
+    st.markdown("### Operator follow‑up questions")
+    if st.session_state.followups:
+        st.text_area(
+            "Questions (read‑only)",
+            value="\n".join(st.session_state.followups),
+            height=120,
+            key="followup_view",
+            disabled=True
+        )
+    else:
+        st.info("No operator follow‑up questions for this message.")
 
-    # ---------- Translation ---------------------------------------------
+    # ---------- Translation --------------------------------------------
     default_lang = (st.session_state.lang
                     if st.session_state.lang in LANGUAGE_OPTIONS else "English")
     target_lang = st.selectbox(
@@ -287,8 +276,8 @@ if st.session_state.draft:
 
     if st.button("Translate & update"):
         translation_prompt = (
-            f"You are a translator. Translate the reply into {target_lang}, "
-            f"using accurate insurance terminology. Maintain the tone and meaning."
+            f"Translate the reply into {target_lang} using accurate "
+            f"insurance terminology while keeping tone and meaning."
         )
         translated_text = openai_chat(
             translation_prompt, st.session_state.draft, api_key,
@@ -296,14 +285,12 @@ if st.session_state.draft:
         )
         st.session_state.translation = translated_text
 
-# ---------------------------------------------------------------------------
-# Show translated answer
-# ---------------------------------------------------------------------------
+# -------------------------------------------------------------------
+# Translation display
+# -------------------------------------------------------------------
 if st.session_state.translation:
     st.header("Translated response")
-    st.text_area(
-        "Final translation",
-        key="translated_output",
-        value=st.session_state.translation,
-        height=220
-    )
+    st.text_area("Final translation",
+                 key="translated_output",
+                 value=st.session_state.translation,
+                 height=220)
