@@ -1,18 +1,19 @@
-# Empathos – streamlined version (21 Apr 2025)
+# Empathos – streamlined version with follow‑up fix  (21 Apr 2025)
+# ----------------------------------------------------------------------
+import re                    # NEW: for robust follow‑up extraction
 import streamlit as st
-import re
 from openai import OpenAI
 
-# ------------------------------------------------------------
+# ----------------------------------------------------------------------
 # Page config
-# ------------------------------------------------------------
+# ----------------------------------------------------------------------
 st.set_page_config(page_title="Empathos", layout="centered")
 st.title("Empathos")
 st.subheader("Your voice, their peace of mind")
 
-# ------------------------------------------------------------
+# ----------------------------------------------------------------------
 # Constants
-# ------------------------------------------------------------
+# ----------------------------------------------------------------------
 LANGUAGE_OPTIONS = [
     "English", "Slovak", "Italian", "Icelandic",
     "Hungarian", "German", "Czech", "Polish", "Vulcan"
@@ -31,9 +32,9 @@ FORMALITY_OPTIONS = ["Very casual", "Casual", "Neutral",
 LENGTH_OPTIONS    = ["Very concise", "Concise", "Balanced",
                      "Detailed", "Very detailed"]
 
-# ------------------------------------------------------------
+# ----------------------------------------------------------------------
 # Helper widgets & helpers
-# ------------------------------------------------------------
+# ----------------------------------------------------------------------
 def info_field(label: str, value: str, tooltip: str) -> None:
     """Read‑only one‑liner with an ℹ️ tooltip."""
     st.text_input(label, value=value, disabled=True, help=tooltip)
@@ -51,10 +52,9 @@ def get_desired():
               else st.session_state.length_label)
     return tone, formality, length
 
-
-# ------------------------------------------------------------
+# ----------------------------------------------------------------------
 # OpenAI helpers (non‑cached – OpenAI client is unhashable)
-# ------------------------------------------------------------
+# ----------------------------------------------------------------------
 def openai_chat(prompt: str, user_text: str, api_key: str,
                 model: str = "gpt-4.1", max_tokens: int = 10,
                 temperature: float = 0) -> str:
@@ -96,10 +96,9 @@ def detect_language(t, k):
         "of the language in English.",
         t, k, model="gpt-4.1-mini")
 
-
-# ------------------------------------------------------------
+# ----------------------------------------------------------------------
 # Session‑state defaults
-# ------------------------------------------------------------
+# ----------------------------------------------------------------------
 def init_session():
     defaults = {
         "sentiment": "", "formality": "", "slant": "", "lang": "",
@@ -114,12 +113,11 @@ def init_session():
         if k not in st.session_state:
             st.session_state[k] = v
 
-
 init_session()
 
-# ------------------------------------------------------------
+# ----------------------------------------------------------------------
 # Mode & basic inputs
-# ------------------------------------------------------------
+# ----------------------------------------------------------------------
 st.radio("Mode", ["Simple", "Advanced"], key="mode", horizontal=True)
 
 client_review = st.text_area(
@@ -138,9 +136,9 @@ st.radio("Channel", ["Email (private)", "Public post"],
 
 api_key = st.text_input("OpenAI API key", type="password")
 
-# ------------------------------------------------------------
+# ----------------------------------------------------------------------
 # Generate draft
-# ------------------------------------------------------------
+# ----------------------------------------------------------------------
 if st.button("Generate draft", type="primary"):
     if not client_review.strip() or not api_key:
         st.error("Please fill in the review and API key.")
@@ -157,7 +155,8 @@ if st.button("Generate draft", type="primary"):
         )
 
         tone, formality, length = get_desired()
-        channel_phrase = ("private email" if "Email" in st.session_state.channel_type
+        channel_phrase = ("private email"
+                          if "Email" in st.session_state.channel_type
                           else "public response")
 
         system_prompt = f"""
@@ -195,26 +194,28 @@ if st.button("Generate draft", type="primary"):
             max_tokens=600,
             temperature=0.9
         )
-        full_output = completion.choices[0].message.content.splitlines()
 
-        followup_pat   = re.compile(r'^\s*\?\s*[-–]*\s*(.*)$')  # new regex
-        draft_lines    = []
-        followup_lines = []
+        # ---------------- Robust extraction of follow‑ups -----------------
+        lines = completion.choices[0].message.content.splitlines()
+        draft_lines, followup_lines = [], []
 
-        for ln in full_output:
-            m = followup_pat.match(ln)
-            if m:
-                    followup_lines.append(m.group(1).strip())
+        for raw in lines:
+            ln = raw.lstrip()           # ignore leading spaces
+            if ln.startswith("?"):
+                # remove "?", any spaces or dashes that follow, keep rest
+                cleaned = re.sub(r"^[\?\s\-–—]+", "", ln).strip()
+                if cleaned:
+                    followup_lines.append(cleaned)
             else:
-                    draft_lines.append(ln)
+                draft_lines.append(raw)
 
         st.session_state.draft     = "\n".join(draft_lines).strip()
         st.session_state.followups = followup_lines
-        st.session_state.translation = ""  # clear previous translation
+        st.session_state.translation = ""  # reset previous translation
 
-# ------------------------------------------------------------
+# ----------------------------------------------------------------------
 # Display analysis, parameters, draft
-# ------------------------------------------------------------
+# ----------------------------------------------------------------------
 if st.session_state.draft:
     tone, formality, length = get_desired()
 
@@ -237,12 +238,10 @@ if st.session_state.draft:
 
         with col_par:
             st.subheader("Parameters used")
-            info_field("Tone", tone,
-                       "Chosen automatically from sentiment.")
+            info_field("Tone", tone, "Chosen automatically from sentiment.")
             info_field("Formality (reply)", formality,
                        "Mirrors customer's style.")
-            info_field("Length", length,
-                       "Balanced with message size.")
+            info_field("Length", length, "Balanced with message size.")
 
     # -------- ADVANCED mode layout ----------------------------------------
     else:
@@ -279,10 +278,14 @@ if st.session_state.draft:
 
     # -------- Follow‑ups ---------------------------------------------------
     if st.session_state.followups:
-        with st.expander("Questions that need operator input",
-                        expanded=(st.session_state.mode == "Simple")):
+        if st.session_state.mode == "Simple":
+            st.markdown("### Follow‑up questions for operator")
             for q in st.session_state.followups:
                 st.markdown(f"- {q}")
+        else:  # Advanced mode: keep it collapsible
+            with st.expander("Questions that need operator input", expanded=False):
+                for q in st.session_state.followups:
+                    st.markdown(f"- {q}")
 
     # -------- Translation --------------------------------------------------
     default_lang = (st.session_state.lang if st.session_state.lang in LANGUAGE_OPTIONS
@@ -302,9 +305,9 @@ if st.session_state.draft:
         )
         st.session_state.translation = translated_text
 
-# ------------------------------------------------------------
+# ----------------------------------------------------------------------
 # Show translated answer
-# ------------------------------------------------------------
+# ----------------------------------------------------------------------
 if st.session_state.translation:
     st.header("Translated response")
     st.text_area("Final translation",
