@@ -1,5 +1,6 @@
 # Empathos – streamlined version (21 Apr 2025)
 import streamlit as st
+import re
 from openai import OpenAI
 
 # ------------------------------------------------------------
@@ -194,14 +195,21 @@ if st.button("Generate draft", type="primary"):
             max_tokens=600,
             temperature=0.9
         )
-        full_output = completion.choices[0].message.content.strip().splitlines()
+        full_output = completion.choices[0].message.content.splitlines()
 
-        st.session_state.draft     = "\n".join(
-            ln for ln in full_output if not ln.startswith('?')
-        ).strip()
-        st.session_state.followups = [
-            ln[1:].strip() for ln in full_output if ln.startswith('?')
-        ]
+        followup_pat   = re.compile(r'^\s*\?\s*[-–]*\s*(.*)$')  # new regex
+        draft_lines    = []
+        followup_lines = []
+
+        for ln in full_output:
+            m = followup_pat.match(ln)
+            if m:
+                    followup_lines.append(m.group(1).strip())
+            else:
+                    draft_lines.append(ln)
+
+        st.session_state.draft     = "\n".join(draft_lines).strip()
+        st.session_state.followups = followup_lines
         st.session_state.translation = ""  # clear previous translation
 
 # ------------------------------------------------------------
