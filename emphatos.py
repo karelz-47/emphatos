@@ -1,3 +1,5 @@
+# Empathos – streamlined version with UX fixes (21 Apr 2025)
+
 import streamlit as st
 from openai import OpenAI
 
@@ -6,206 +8,288 @@ from openai import OpenAI
 # ------------------------------------------------------------
 st.set_page_config(page_title="Empathos", layout="centered")
 st.title("Empathos")
-st.subheader("Your Voice, Their Peace of Mind")
+st.subheader("Your voice, their peace of mind")
 
 # ------------------------------------------------------------
 # Constants
 # ------------------------------------------------------------
-LANGUAGE_OPTIONS = ["English","Slovak","Italian","Icelandic","Hungarian","German","Czech","Polish","Vulcan"]
-LENGTH_CATEGORIES = [(0, 20, "Very Concise"), (21, 50, "Concise"), (51, 100, "Balanced"), (101, 200, "Detailed"), (201, 9999, "Very Detailed")]
-TONE_OPTIONS = ["Very Apologetic", "Apologetic", "Neutral", "Enthusiastic", "Very Enthusiastic"]
-FORMALITY_OPTIONS = ["Very Casual", "Casual", "Neutral", "Professional", "Very Formal"]
-LENGTH_OPTIONS = ["Very Concise", "Concise", "Balanced", "Detailed", "Very Detailed"]
+LANGUAGE_OPTIONS   = ["English", "Slovak", "Italian", "Icelandic",
+                      "Hungarian", "German", "Czech", "Polish", "Vulcan"]
+
+LENGTH_CATEGORIES  = [(0, 20, "Very concise"), (21, 50, "Concise"),
+                      (51, 100, "Balanced"), (101, 200, "Detailed"),
+                      (201, 9_999, "Very detailed")]
+
+TONE_OPTIONS       = ["Very apologetic", "Apologetic", "Neutral",
+                      "Enthusiastic", "Very enthusiastic"]
+
+FORMALITY_OPTIONS  = ["Very casual", "Casual", "Neutral",
+                      "Professional", "Very formal"]
+
+LENGTH_OPTIONS     = ["Very concise", "Concise", "Balanced",
+                      "Detailed", "Very detailed"]
 
 # ------------------------------------------------------------
-# Helper functions (non-cached due to unhashable OpenAI clients)
+# Helper widgets
 # ------------------------------------------------------------
-def analyze_sentiment(text: str, api_key: str) -> str:
-    client = OpenAI(api_key=api_key)
-    prompt = """Label the sentiment of the following customer message as one of:
-    'Very negative', 'Negative', 'Neutral', 'Positive', 'Very positive'.
-    Return only the label."""
-    res = client.chat.completions.create(
-        model="gpt-4.1",
-        messages=[{"role": "system", "content": prompt}, {"role": "user", "content": text}],
-        max_tokens=5, temperature=0
-    )
-    return res.choices[0].message.content.strip()
-
-def detect_formality(text: str, api_key: str) -> str:
-    client = OpenAI(api_key=api_key)
-    prompt = """Classify the formality of this message as 'Casual', 'Neutral', or 'Formal'."""
-    res = client.chat.completions.create(
-        model="gpt-4.1",
-        messages=[{"role": "system", "content": prompt}, {"role": "user", "content": text}],
-        max_tokens=5, temperature=0
-    )
-    return res.choices[0].message.content.strip()
-
-def classify_slant(text: str, api_key: str) -> str:
-    client = OpenAI(api_key=api_key)
-    prompt = (
-        "Analyze the customer's complaint and classify it as:\n"
-        "- 'Failure-focused' (emphasizing what went wrong),\n"
-        "- 'Loss-focused' (emphasizing consequences or damage), or\n"
-        "- 'Neutral' (not clearly emotional or blame-oriented).\n"
-        "Return only the label."
-    )
-    res = client.chat.completions.create(
-        model="gpt-4.1",
-        messages=[{"role": "system", "content": prompt}, {"role": "user", "content": text}],
-        max_tokens=5, temperature=0
-    )
-    return res.choices[0].message.content.strip()
-
-def detect_language(text: str, api_key: str) -> str:
-    client = OpenAI(api_key=api_key)
-    prompt = "Detect the language of the following text. Return only the name of the language in English."
-    res = client.chat.completions.create(
-        model="gpt-4.1-mini",
-        messages=[{"role": "system", "content": prompt}, {"role": "user", "content": text}],
-        max_tokens=5, temperature=0
-    )
-    return res.choices[0].message.content.strip()
+def info_field(label: str, value: str, tooltip: str) -> None:
+    """Read‑only, single‑line field with an ℹ️ tooltip."""
+    st.text_input(label, value=value, disabled=True, help=tooltip)
 
 # ------------------------------------------------------------
-# Session state initialization
+# Helper functions (non‑cached – OpenAI client is unhashable)
+# ------------------------------------------------------------
+def openai_chat(prompt: str, user_text: str, api_key: str,
+                model: str = "gpt-4.1", max_tokens: int = 10,
+                temperature: float = 0) -> str:
+    client = OpenAI(api_key=api_key)
+    res = client.chat.completions.create(
+        model=model,
+        messages=[{"role": "system", "content": prompt},
+                  {"role": "user", "content": user_text}],
+        max_tokens=max_tokens,
+        temperature=temperature
+    )
+    return res.choices[0].message.content.strip()
+
+def analyze_sentiment(text, key):
+    return openai_chat(
+        "Label the sentiment of the customer message as 'Very negative', "
+        "'Negative', 'Neutral', 'Positive', or 'Very positive'. "
+        "Return only the label.",
+        text, key)
+
+def detect_formality(text, key):
+    return openai_chat(
+        "Classify the formality of this message as 'Casual', 'Neutral', or 'Formal'. "
+        "Return only the label.",
+        text, key)
+
+def classify_slant(text, key):
+    return openai_chat(
+        "Analyze the complaint and classify it as:\n"
+        "- 'Failure‑focused'\n- 'Loss‑focused'\n- 'Neutral'\n"
+        "Return only the label.",
+        text, key)
+
+def detect_language(text, key):
+    return openai_chat(
+        "Detect the language of the following text. Return only the name of the language in English.",
+        text, key, model="gpt-4.1-mini")
+
+# ------------------------------------------------------------
+# Session‑state defaults
 # ------------------------------------------------------------
 def init_session():
-    keys_defaults = {
+    defaults = {
         "sentiment": "", "formality": "", "slant": "", "lang": "",
-        "draft": "", "translation": "", "length_label": "", "followups": [],
-        "mode": "Simple", "tone_choice": "Neutral", "formality_choice": "Professional", "length_choice": "Balanced"
+        "length_label": "", "tone_choice": "Neutral",
+        "formality_choice": "Professional", "length_choice": "Balanced",
+        "draft": "", "translation": "", "followups": [],
+        "mode": "Simple"
     }
-    for k, v in keys_defaults.items():
+    for k, v in defaults.items():
         if k not in st.session_state:
             st.session_state[k] = v
 
 init_session()
 
 # ------------------------------------------------------------
-# Mode Toggle
+# Mode & basic inputs
 # ------------------------------------------------------------
 st.radio("Mode", ["Simple", "Advanced"], key="mode", horizontal=True)
 
-# ------------------------------------------------------------
-# User Inputs
-# ------------------------------------------------------------
-client_review = st.text_area("Customer Review or Comment", height=140)
-insights = st.text_input("Additional Context (optional)")
-channel = st.radio("Type of Inquiry", ["Private (Email)", "Public (Review/Tweet)"], key="channel_type")
-api_key = st.text_input("OpenAI API Key", type="password")
+client_review = st.text_area(
+    "Customer review",
+    placeholder="Paste the customer's message or review here",
+    height=140
+)
 
-if st.button("Generate Draft"):
+insights = st.text_input(
+    "Internal notes (optional)",
+    placeholder="Anything that helps us answer accurately"
+)
+
+st.radio(
+    "Channel",
+    ["Email (private)", "Public post"],
+    key="channel_type",
+    horizontal=True
+)
+
+api_key = st.text_input("OpenAI API key", type="password")
+
+# ------------------------------------------------------------
+# Generate draft
+# ------------------------------------------------------------
+if st.button("Generate draft", type="primary"):
     if not client_review.strip() or not api_key:
         st.error("Please fill in the review and API key.")
     else:
-        st.session_state.sentiment = analyze_sentiment(client_review, api_key)
-        st.session_state.formality = detect_formality(client_review, api_key)
-        st.session_state.slant = classify_slant(client_review, api_key)
-        st.session_state.lang = detect_language(client_review, api_key)
+        # --- automatic analysis ---
+        st.session_state.sentiment     = analyze_sentiment(client_review, api_key)
+        st.session_state.formality     = detect_formality(client_review, api_key)
+        st.session_state.slant         = classify_slant(client_review, api_key)
+        st.session_state.lang          = detect_language(client_review, api_key)
 
-        word_count = len(client_review.split())
-        for lower, upper, label in LENGTH_CATEGORIES:
-            if lower <= word_count <= upper:
-                st.session_state.length_label = label
-                break
+        wc = len(client_review.split())
+        st.session_state.length_label  = next(
+            label for low, up, label in LENGTH_CATEGORIES if low <= wc <= up
+        )
 
-        # Advanced Mode: use manual settings
-        tone = st.session_state.tone_choice if st.session_state.mode == "Advanced" else ""
-        formality = st.session_state.formality_choice if st.session_state.mode == "Advanced" else ""
-        length = st.session_state.length_choice if st.session_state.mode == "Advanced" else st.session_state.length_label
+        # --- parameter selection ---
+        desired_tone = (st.session_state.tone_choice      if st.session_state.mode == "Advanced"
+                        else "Neutral")
+        desired_formality = (st.session_state.formality_choice
+                             if st.session_state.mode == "Advanced"
+                             else st.session_state.formality)
+        desired_length = (st.session_state.length_choice
+                          if st.session_state.mode == "Advanced"
+                          else st.session_state.length_label)
 
+        # --- system prompt ---
+        channel_phrase = ("private email" if "Email" in st.session_state.channel_type
+                          else "public response")
         system_prompt = f"""
-        You are a customer service specialist in life insurance.
-        Respond to the customer message in a tone appropriate for a {st.session_state.channel_type.lower()}.
+        You are a life‑insurance customer‑service specialist.
+        Respond to the customer in a tone appropriate for a {channel_phrase}.
         Sentiment: {st.session_state.sentiment}
-        Formality: {formality or st.session_state.formality}
-        Complaint Slant: {st.session_state.slant}
-        Length: {length}
-        Tone: {tone or 'Neutral'}
+        Formality: {desired_formality}
+        Complaint slant: {st.session_state.slant}
+        Desired length: {desired_length}
+        Desired tone: {desired_tone}
 
         Guidelines:
         - Always be empathetic and professional.
-        - Acknowledge the customer’s emotion based on sentiment.
-        - If slant is 'Failure-focused', focus on empathetic apology.
-        - If slant is 'Loss-focused', emphasize concrete remedy or compensation.
+        - Acknowledge the customer's emotion.
+        - If slant is 'Failure‑focused', focus on sincere apology.
+        - If slant is 'Loss‑focused', emphasize remedy or compensation.
         - Use clear insurance terminology.
-        - Restate core issue briefly and offer next steps.
-        - For public responses, be concise, polite, and careful of sensitive info.
-        - For private responses, be more detailed and action-oriented.
-        - If the review includes numerical claims or complaints about specific product features (e.g. fee amounts), start the reply with a line beginning with '?' asking the operator to verify the specific product terms. Also use '?' if the request appears unresolved.
-        """
+        - Restate the core issue briefly and offer next steps.
+        - For public responses: be concise, polite, and avoid sensitive info.
+        - For private responses: be more detailed and action‑oriented.
+        - If the review includes numerical claims or product‑feature complaints,
+          start the reply with a line beginning with '?' asking the operator
+          to verify those details. Lines that start with '?' are for the operator
+          and should not be sent to the customer.
+        """.strip()
 
-        user_message = f"Review: {client_review}\nContext: {insights or '-'}"
+        # --- call OpenAI for the draft ---
         client = OpenAI(api_key=api_key)
-        res = client.chat.completions.create(
+        completion = client.chat.completions.create(
             model="gpt-4.1",
-            messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_message}],
-            max_tokens=500,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": f"Review: {client_review}\nContext: {insights or '-'}"}
+            ],
+            max_tokens=600,
             temperature=0.9
         )
+        full_output = completion.choices[0].message.content.strip().splitlines()
 
-        full_output = res.choices[0].message.content.strip()
-        lines = full_output.splitlines()
-        draft_lines = [l for l in lines if not l.startswith('?')]
-        followup_lines = [l[1:].strip() for l in lines if l.startswith('?')]
+        draft_lines    = [ln for ln in full_output if not ln.startswith('?')]
+        followup_lines = [ln[1:].strip() for ln in full_output if ln.startswith('?')]
 
-        st.session_state.draft = "\n".join(draft_lines).strip()
+        st.session_state.draft     = "\n".join(draft_lines).strip()
         st.session_state.followups = followup_lines
+        st.session_state.translation = ""  # reset previous translation if any
 
 # ------------------------------------------------------------
-# Display Analysis + Controls
+# Display analysis, parameters, draft
 # ------------------------------------------------------------
 if st.session_state.draft:
-    st.markdown("### Analysis Summary")
-    st.write(f"**Sentiment:** {st.session_state.sentiment}")
-    st.caption("Sentiment is the emotional tone of the review — this helps shape the empathy level and tone of the reply.")
-    st.write(f"**Formality (Detected):** {st.session_state.formality}")
-    st.caption("This identifies whether the customer wrote casually, neutrally, or formally. It guides the tone and structure of the response.")
-    st.write(f"**Complaint Slant:** {st.session_state.slant}")
-    st.caption("The slant identifies whether the customer focuses on what went wrong or the losses they suffered — this affects whether the response focuses on empathy or action.")
-    st.write(f"**Length (Detected):** {st.session_state.length_label}")
-    st.caption("This estimates how long and detailed the customer’s message was, suggesting the expected depth of your reply.")
-    st.write(f"**Detected Language:** {st.session_state.lang}")
 
-    if st.session_state.mode == "Advanced":
-        st.select_slider("Tone of reply", options=TONE_OPTIONS, key="tone_choice")
-        st.select_slider("Length of reply", options=LENGTH_OPTIONS, key="length_choice")
-        st.select_slider("Formality of reply", options=FORMALITY_OPTIONS, key="formality_choice")
+    # ---- SIMPLE vs ADVANCED LAYOUT ----------------------------------------
+    if st.session_state.mode == "Simple":
+        col_sum, col_par = st.columns([3, 2])
+        with col_sum:
+            st.subheader("Analysis summary")
+            info_field("Sentiment", st.session_state.sentiment,
+                       "Overall emotional tone of the customer's message.")
+            info_field("Formality (detected)", st.session_state.formality,
+                       "Degree of casual vs. formal language.")
+            info_field("Complaint slant", st.session_state.slant,
+                       "Focus on failure, loss, or neutral view.")
+            info_field("Length (detected)", st.session_state.length_label,
+                       "Approximate size of the customer's message.")
+            info_field("Language", st.session_state.lang,
+                       "Detected language of the original text.")
+        with col_par:
+            st.subheader("Parameters used")
+            info_field("Tone", desired_tone,
+                       "Chosen automatically from sentiment." if st.session_state.mode == "Simple"
+                       else "Your selected tone.")
+            info_field("Formality (reply)", desired_formality,
+                       "Mirrors customer's style." if st.session_state.mode == "Simple"
+                       else "Your selected formality level.")
+            info_field("Length", desired_length,
+                       "Balanced with message size." if st.session_state.mode == "Simple"
+                       else "Your chosen length.")
 
-    st.markdown("---")
-    st.header("Draft Response")
-    st.text_area("Editable Draft", value=st.session_state.draft, height=200, key="draft_edit")
+    else:  # Advanced mode
+        st.subheader("Analysis summary")
+        info_field("Sentiment", st.session_state.sentiment,
+                   "Overall emotional tone of the customer's message.")
+        info_field("Formality (detected)", st.session_state.formality,
+                   "Degree of casual vs. formal language.")
+        info_field("Complaint slant", st.session_state.slant,
+                   "Focus on failure, loss, or neutral view.")
+        info_field("Length (detected)", st.session_state.length_label,
+                   "Approximate size of the customer's message.")
+        info_field("Language", st.session_state.lang,
+                   "Detected language of the original text.")
 
-    st.markdown("### Parameters Used for Draft")
-    st.write(f"**Tone:** {st.session_state.tone_choice if st.session_state.mode == 'Advanced' else 'Auto: Neutral (based on sentiment)'}")
-    st.write(f"**Formality:** {st.session_state.formality_choice if st.session_state.mode == 'Advanced' else 'Auto: ' + st.session_state.formality}")
-    st.write(f"**Length:** {st.session_state.length_choice if st.session_state.mode == 'Advanced' else 'Auto: ' + st.session_state.length_label}")
+        # manual overrides
+        st.markdown("#### Override parameters")
+        st.select_slider("Desired tone", options=TONE_OPTIONS, key="tone_choice",
+                         help="Override the automatic tone, if you like.")
+        st.select_slider("Reply length", options=LENGTH_OPTIONS, key="length_choice",
+                         help="How detailed should the answer be?")
+        st.select_slider("Formality level", options=FORMALITY_OPTIONS, key="formality_choice",
+                         help="Choose how casual or formal the reply sounds.")
+        st.markdown("---")
 
+    # ---- Draft response ---------------------------------------------------
+    st.header("Draft response")
+    st.text_area("Editable draft",
+                 key="draft_edit",
+                 value=st.session_state.draft,
+                 height=220)
+
+    # ---- Follow‑up questions ---------------------------------------------
     if st.session_state.followups:
-        st.markdown("### Follow-Up Questions for Operator")
-        with st.expander("Click to review", expanded=True):
-         for q in st.session_state.followups:
+        with st.expander("Questions that need operator input", expanded=True):
+            for q in st.session_state.followups:
                 st.markdown(f"- {q}")
 
-    default_lang = st.session_state.lang if st.session_state.lang in LANGUAGE_OPTIONS else "English"
-    final_language = st.selectbox("Translate to:", options=LANGUAGE_OPTIONS, index=LANGUAGE_OPTIONS.index(default_lang))
+    # ---- Translation ------------------------------------------------------
+    default_lang = (st.session_state.lang if st.session_state.lang in LANGUAGE_OPTIONS
+                    else "English")
+    target_lang = st.selectbox("Translate to:",
+                               LANGUAGE_OPTIONS,
+                               index=LANGUAGE_OPTIONS.index(default_lang))
 
-    if st.button("Translate Final Version"):
-        translation_prompt = f"You are a translator. Translate the reply into {final_language}, using accurate grammar and terminology used in insurance and financial services in that language. Prioritize clear, formal phrasing and ensure the meaning and tone match the original English response."
-        client = OpenAI(api_key=api_key)
-        trans_res = client.chat.completions.create(
-            model="gpt-4.1-mini",
-            messages=[{"role": "system", "content": translation_prompt}, {"role": "user", "content": st.session_state.draft}],
-            max_tokens=1000,
-            temperature=0
+    if st.button("Translate & update"):
+        translation_prompt = (
+            f"You are a translator. Translate the reply into {target_lang}, "
+            f"using accurate insurance terminology. Maintain the tone and meaning."
         )
-        st.session_state.translation = trans_res.choices[0].message.content.strip()
+        translated_text = openai_chat(
+            translation_prompt,
+            st.session_state.draft,
+            api_key,
+            model="gpt-4.1-mini",
+            max_tokens=1000
+        )
+        st.session_state.translation = translated_text
 
 # ------------------------------------------------------------
-# Display Translation
+# Display translation
 # ------------------------------------------------------------
 if st.session_state.translation:
-    st.header("Translated Response")
-    st.text_area("Final Translation", value=st.session_state.translation, height=200, key="translated_output")
+    st.header("Translated response")
+    st.text_area("Final translation",
+                 key="translated_output",
+                 value=st.session_state.translation,
+                 height=220,
+                 disabled=False)
