@@ -1,4 +1,3 @@
-```python
 # Empathos – v2 (22 Apr 2025)  — emphasised follow‑ups + always‑visible panel
 # ---------------------------------------------------------------------------
 import re
