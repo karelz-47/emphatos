@@ -307,4 +307,3 @@ if st.session_state.translation:
         value=st.session_state.translation,
         height=220
     )
-```
