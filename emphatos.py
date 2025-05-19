@@ -22,24 +22,12 @@ FUNCTIONS = [
     {
         "name": "request_additional_info",
         "description": "Ask the operator for missing facts or confirmations before a customer reply can be written.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "questions": { "type": "array", "items": { "type": "string" }, "description": "Each question the operator must answer" }
-            },
-            "required": ["questions"]
-        }
+        "parameters": {"type": "object","properties": {"questions": {"type": "array","items": {"type": "string"},"description": "Each question the operator must answer"}},"required": ["questions"]}
     },
     {
         "name": "compose_reply",
         "description": "Return the final customer-facing reply.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "draft": {"type": "string", "description": "The complete reply text, ready to send or translate."}
-            },
-            "required": ["draft"]
-        }
+        "parameters": {"type": "object","properties": {"draft": {"type": "string","description": "The complete reply text, ready to send or translate."}},"required": ["draft"]}
     }
 ]
 
@@ -64,14 +52,16 @@ def run_llm(messages, api_key, functions=None, function_call="auto"):
 # ----------------------------------------------------------------------
 def init_state():
     defaults = {
-        "stage": "init",        # init, asked, done
-        "questions": [],         # list of questions from LLM
-        "answers": {},           # operator answers mapping
+        "stage": "init",        # init, asked, done, reviewed, translated, reviewed_translation
+        "questions": [],
+        "answers": {},
         "draft": "",
+        "reviewed_draft": "",
         "translation": "",
+        "reviewed_translation": "",
         "mode": "Simple",
         "operator_notes": "",
-        "messages": None         # to store LLM message context
+        "messages": None
     }
     for k, v in defaults.items():
         st.session_state.setdefault(k, v)
@@ -81,10 +71,10 @@ init_state()
 # ----------------------------------------------------------------------
 # UI Inputs
 # ----------------------------------------------------------------------
-st.radio("Interface mode", ["Simple", "Advanced"], key="mode", horizontal=True)
+st.radio("Interface mode", ["Simple","Advanced"], key="mode", horizontal=True)
 client_review = st.text_area("Customer message or review", placeholder="Paste the customer's text here", height=140)
 st.text_area("Additional information for answer (operator notes)", key="operator_notes", placeholder="Reply to open questions or add facts the model needs.", height=100)
-st.radio("Response channel", ["Email (private)", "Public post"], key="channel_type", horizontal=True)
+st.radio("Response channel", ["Email (private)","Public post"], key="channel_type", horizontal=True)
 api_key = st.text_input("OpenAI API key", type="password")
 
 # ----------------------------------------------------------------------
@@ -105,84 +95,97 @@ if st.button("Generate response draft", type="primary"):
         )
         if mode == "Simple":
             preamble += "\nIn simple mode, assume the operator cannot be contacted; prefer a minimal answer and do not call request_additional_info."
-        messages = [
-            {"role": "system", "content": preamble},
-            {"role": "user", "content": f"Customer review:\n{client_review}\n\nOperator notes:\n{st.session_state.operator_notes or '-'}"}
+        msgs = [
+            {"role":"system","content":preamble},
+            {"role":"user","content":f"Customer review:\n{client_review}\n\nOperator notes:\n{st.session_state.operator_notes or '-'}"}
         ]
-        # store initial messages
-        st.session_state.messages = messages
-        msg = run_llm(messages, api_key, functions=FUNCTIONS)
+        st.session_state.messages = msgs
+        msg = run_llm(msgs, api_key, functions=FUNCTIONS)
 
         # handle function response
-        if hasattr(msg, 'function_call') and msg.function_call:
-            name = msg.function_call.name
+        if hasattr(msg,'function_call') and msg.function_call:
+            fn = msg.function_call.name
             args = json.loads(msg.function_call.arguments)
-            if name == "request_additional_info" and mode == "Advanced":
+            if fn == "request_additional_info" and mode == "Advanced":
                 st.session_state.questions = args.get("questions", [])
                 st.session_state.stage = "asked"
-            elif name == "compose_reply":
-                st.session_state.draft = args.get("draft", "").strip()
-                st.session_state.stage = "done"
             else:
-                st.session_state.draft = args.get("draft", "").strip()
+                st.session_state.draft = args.get("draft",msg.content).strip()
                 st.session_state.stage = "done"
         else:
             st.session_state.draft = msg.content.strip()
             st.session_state.stage = "done"
 
 # ----------------------------------------------------------------------
-# If questions are asked, collect answers
+# Operator answers
 # ----------------------------------------------------------------------
 if st.session_state.stage == "asked":
     st.header("Operator follow-up questions")
-    for i, q in enumerate(st.session_state.questions):
-        # render input for each question
+    for i,q in enumerate(st.session_state.questions):
         ans = st.text_input(f"Q{i+1}: {q}", key=f"ans_{i}")
         st.session_state.answers[q] = ans
     if st.button("Submit answers and draft reply"):
-        # reconstruct messages and append function call
-        messages = st.session_state.messages.copy()
-        func_call = {
-            "name": "request_additional_info",
-            "arguments": json.dumps({
-                "questions": st.session_state.questions,
-                "answers": st.session_state.answers
-            })
-        }
-        messages.append({
-            "role": "function",
-            "name": func_call["name"],
-            "content": func_call["arguments"]  # this must be a JSON string
-        })
-        # update stored messages
-        st.session_state.messages = messages
-        msg = run_llm(messages, api_key, functions=FUNCTIONS)
-        if hasattr(msg, 'function_call') and msg.function_call.name == "compose_reply":
-            args = json.loads(msg.function_call.arguments)
-            st.session_state.draft = args.get("draft", "").strip()
+        msgs = st.session_state.messages.copy()
+        msgs.append({"role":"function","name":"request_additional_info","content":json.dumps({"questions":st.session_state.questions,"answers":st.session_state.answers})})
+        st.session_state.messages = msgs
+        msg = run_llm(msgs, api_key, functions=FUNCTIONS)
+        if hasattr(msg,'function_call') and msg.function_call.name=="compose_reply":
+            st.session_state.draft = json.loads(msg.function_call.arguments).get("draft","").strip()
         else:
             st.session_state.draft = msg.content.strip()
         st.session_state.stage = "done"
 
 # ----------------------------------------------------------------------
-# Display draft and translation if done
+# Review loop for draft
 # ----------------------------------------------------------------------
-if st.session_state.stage == "done":
-    st.header("Draft response")
-    st.text_area("Editable draft response", key="draft_edit", value=st.session_state.draft, height=220)
-    default_lang = "English"
-    target_lang = st.selectbox("Translate final reply to:", LANGUAGE_OPTIONS, index=LANGUAGE_OPTIONS.index(default_lang))
-    if st.button("Translate & update"):
-        trans_prompt = f"Translate the reply into {target_lang} using accurate insurance terminology while keeping tone and meaning."
-        client = OpenAI(api_key=api_key)
-        trans = client.chat.completions.create(
-            model="gpt-4.1-mini",
-            messages=[{"role":"system","content":trans_prompt}, {"role":"user","content":st.session_state.draft}],
-            max_tokens=1000,
-            temperature=0
-        )
-        st.session_state.translation = trans.choices[0].message.content.strip()
+if st.session_state.stage == "done" and not st.session_state.reviewed_draft:
+    review_prompt = (
+        "You are a thorough supervisor reviewing the draft reply against all instructions."
+        " Identify any factual, tone, or promise issues and output a revised draft with corrections."
+    )
+    review_msgs = [
+        {"role":"system","content":review_prompt},
+        {"role":"user","content":st.session_state.draft}
+    ]
+    review_msg = run_llm(review_msgs, api_key)
+    st.session_state.reviewed_draft = review_msg.content.strip()
+    st.session_state.stage = "reviewed"
 
-if st.session_state.translation:
-    st.header("Translated response")
-    st.text_area("Final translation of reply", key="translated_output", value=st.session_state.translation, height=220)
+# ----------------------------------------------------------------------
+# Display reviewed draft
+# ----------------------------------------------------------------------
+if st.session_state.stage in ["reviewed","translated","reviewed_translation"]:
+    st.header("Reviewed Draft Response")
+    st.text_area("Final draft after review", key="draft_edit", value=st.session_state.reviewed_draft, height=220)
+
+# ----------------------------------------------------------------------
+# Translation and translation review
+# ----------------------------------------------------------------------
+if st.session_state.stage == "reviewed":
+    default_lang = "English"
+    tgt = st.selectbox("Translate final reply to:", LANGUAGE_OPTIONS, index=LANGUAGE_OPTIONS.index(default_lang))
+    if st.button("Translate & review"):
+        trans = OpenAI(api_key=api_key).chat.completions.create(
+            model="gpt-4.1-mini",
+            messages=[{"role":"system","content":f"Translate without empty promises into {tgt}."},
+                      {"role":"user","content":st.session_state.reviewed_draft}],
+            max_tokens=1000, temperature=0)
+        st.session_state.translation = trans.choices[0].message.content.strip()
+        st.session_state.stage = "translated"
+
+if st.session_state.stage == "translated" and not st.session_state.reviewed_translation:
+    rev_prompt = (
+        "You are a meticulous supervisor reviewing the translated reply for accuracy, tone, and no empty promises."
+        " Produce the final translation."
+    )
+    rev_msgs = [
+        {"role":"system","content":rev_prompt},
+        {"role":"user","content":st.session_state.translation}
+    ]
+    rev_msg = run_llm(rev_msgs, api_key)
+    st.session_state.reviewed_translation = rev_msg.content.strip()
+    st.session_state.stage = "reviewed_translation"
+
+if st.session_state.reviewed_translation:
+    st.header("Final Translated Response")
+    st.text_area("Final translation after review", key="translated_output", value=st.session_state.reviewed_translation, height=220)
