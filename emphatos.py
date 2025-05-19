@@ -46,7 +46,6 @@ FUNCTIONS = [
 # ----------------------------------------------------------------------
 # Helper functions
 # ----------------------------------------------------------------------
-
 def run_llm(messages, api_key, functions=None, function_call="auto"):
     client = OpenAI(api_key=api_key)
     params = {
@@ -92,9 +91,10 @@ st.radio("Response channel", ["Email (private)", "Public post"], key="channel_ty
 api_key = st.text_input("OpenAI API key", type="password")
 
 # ----------------------------------------------------------------------
-# Generate or continue
+# Button actions
 # ----------------------------------------------------------------------
-if st.button("Generate response draft", type="primary"):
+# Generate draft
+if st.button("Generate response draft", key="btn_generate"):
     if not client_review.strip() or not api_key:
         st.error("Please provide the customer text and an API key.")
     else:
@@ -114,8 +114,13 @@ if st.button("Generate response draft", type="primary"):
             {"role": "user", "content": f"Customer review:\n{client_review}\n\nOperator notes:\n{st.session_state.operator_notes or '-'}"}
         ]
         st.session_state.messages = msgs
-        msg = run_llm(msgs, api_key, functions=FUNCTIONS)
+        # call LLM differently based on mode
+        if mode == "Simple":
+            msg = run_llm(msgs, api_key)
+        else:
+            msg = run_llm(msgs, api_key, functions=FUNCTIONS)
 
+        # handle LLM response
         if hasattr(msg, 'function_call') and msg.function_call:
             fn = msg.function_call.name
             args = json.loads(msg.function_call.arguments or "{}")
@@ -129,17 +134,19 @@ if st.button("Generate response draft", type="primary"):
             st.session_state.draft = (msg.content or "").strip()
             st.session_state.stage = "done"
 
-# ----------------------------------------------------------------------
-# Operator answers
-# ----------------------------------------------------------------------
+# Submit answers
 if st.session_state.stage == "asked":
     st.header("Operator follow-up questions")
     for i, q in enumerate(st.session_state.questions):
         ans = st.text_input(f"Q{i+1}: {q}", key=f"ans_{i}")
         st.session_state.answers[q] = ans
-    if st.button("Submit answers and draft reply"):
+    if st.button("Submit answers and draft reply", key="btn_submit_answers"):
         msgs = list(st.session_state.messages)
-        msgs.append({"role": "function", "name": "request_additional_info", "content": json.dumps({"questions": st.session_state.questions, "answers": st.session_state.answers})})
+        msgs.append({
+            "role": "function",
+            "name": "request_additional_info",
+            "content": json.dumps({"questions": st.session_state.questions, "answers": st.session_state.answers})
+        })
         st.session_state.messages = msgs
         msg = run_llm(msgs, api_key, functions=FUNCTIONS)
         if hasattr(msg, 'function_call') and msg.function_call.name == "compose_reply":
@@ -164,9 +171,7 @@ if st.session_state.stage == "done" and not st.session_state.reviewed_draft:
     st.session_state.reviewed_draft = (review_msg.content or "").strip()
     st.session_state.stage = "reviewed"
 
-# ----------------------------------------------------------------------
 # Display reviewed draft
-# ----------------------------------------------------------------------
 if st.session_state.stage in ["reviewed", "translated", "reviewed_translation"]:
     st.header("Reviewed Draft Response")
     st.text_area("Final draft after review", key="draft_edit", value=st.session_state.reviewed_draft, height=220)
@@ -175,16 +180,18 @@ if st.session_state.stage in ["reviewed", "translated", "reviewed_translation"]:
 # Translation + review
 # ----------------------------------------------------------------------
 if st.session_state.stage == "reviewed":
-    default_lang = "English"
-    tgt = st.selectbox("Translate final reply to:", LANGUAGE_OPTIONS, index=LANGUAGE_OPTIONS.index(default_lang))
-    if st.button("Translate & review"):
+    tgt = st.selectbox("Translate final reply to:", LANGUAGE_OPTIONS, index=0)
+    if st.button("Translate & review", key="btn_translate"):
         trans = OpenAI(api_key=api_key).chat.completions.create(
             model="gpt-4.1-mini",
-            messages=[{"role": "system", "content": f"Translate without empty promises into {tgt}."}, {"role": "user", "content": st.session_state.reviewed_draft}],
+            messages=[
+                {"role": "system", "content": f"Translate without empty promises into {tgt}."},
+                {"role": "user", "content": st.session_state.reviewed_draft or ""}
+            ],
             max_tokens=1000,
             temperature=0
         )
-        st.session_state.translation = trans.choices[0].message.content.strip()
+        st.session_state.translation = (trans.choices[0].message.content or "").strip()
         st.session_state.stage = "translated"
 
 if st.session_state.stage == "translated" and not st.session_state.reviewed_translation:
