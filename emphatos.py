@@ -149,7 +149,11 @@ if st.session_state.stage == "asked":
                 "answers": st.session_state.answers
             })
         }
-        messages.append({"role": "function", **func_call})
+        messages.append({
+            "role": "function",
+            "name": func_call["name"],
+            "content": func_call["arguments"]  # this must be a JSON string
+        })
         # update stored messages
         st.session_state.messages = messages
         msg = run_llm(messages, api_key, functions=FUNCTIONS)
