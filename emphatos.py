@@ -25,11 +25,7 @@ FUNCTIONS = [
         "parameters": {
             "type": "object",
             "properties": {
-                "questions": {
-                    "type": "array",
-                    "items": { "type": "string" },
-                    "description": "Each question the operator must answer"
-                }
+                "questions": { "type": "array", "items": { "type": "string" }, "description": "Each question the operator must answer" }
             },
             "required": ["questions"]
         }
@@ -50,6 +46,7 @@ FUNCTIONS = [
 # ----------------------------------------------------------------------
 # Helper functions
 # ----------------------------------------------------------------------
+
 def run_llm(messages, api_key, functions=None, function_call="auto"):
     client = OpenAI(api_key=api_key)
     response = client.chat.completions.create(
@@ -63,7 +60,7 @@ def run_llm(messages, api_key, functions=None, function_call="auto"):
     return response.choices[0].message
 
 # ----------------------------------------------------------------------
-# Session‑state defaults
+# Session-state defaults
 # ----------------------------------------------------------------------
 def init_state():
     defaults = {
@@ -74,6 +71,7 @@ def init_state():
         "translation": "",
         "mode": "Simple",
         "operator_notes": "",
+        "messages": None         # to store LLM message context
     }
     for k, v in defaults.items():
         st.session_state.setdefault(k, v)
@@ -96,7 +94,6 @@ if st.button("Generate response draft", type="primary"):
     if not client_review.strip() or not api_key:
         st.error("Please provide the customer text and an API key.")
     else:
-        # build system prompt
         mode = st.session_state.mode
         preamble = (
             "You are Empathos, a life-insurance support assistant.\n"
@@ -112,9 +109,12 @@ if st.button("Generate response draft", type="primary"):
             {"role": "system", "content": preamble},
             {"role": "user", "content": f"Customer review:\n{client_review}\n\nOperator notes:\n{st.session_state.operator_notes or '-'}"}
         ]
-        # first call
+        # store initial messages
+        st.session_state.messages = messages
         msg = run_llm(messages, api_key, functions=FUNCTIONS)
-        if msg.function_call:
+
+        # handle function response
+        if hasattr(msg, 'function_call') and msg.function_call:
             name = msg.function_call.name
             args = json.loads(msg.function_call.arguments)
             if name == "request_additional_info" and mode == "Advanced":
@@ -124,7 +124,6 @@ if st.button("Generate response draft", type="primary"):
                 st.session_state.draft = args.get("draft", "").strip()
                 st.session_state.stage = "done"
             else:
-                # fallback to treating as draft
                 st.session_state.draft = args.get("draft", "").strip()
                 st.session_state.stage = "done"
         else:
@@ -135,21 +134,26 @@ if st.button("Generate response draft", type="primary"):
 # If questions are asked, collect answers
 # ----------------------------------------------------------------------
 if st.session_state.stage == "asked":
-    st.header("Operator follow‑up questions")
+    st.header("Operator follow-up questions")
     for i, q in enumerate(st.session_state.questions):
+        # render input for each question
         ans = st.text_input(f"Q{i+1}: {q}", key=f"ans_{i}")
         st.session_state.answers[q] = ans
     if st.button("Submit answers and draft reply"):
-        # append function call with answers
+        # reconstruct messages and append function call
+        messages = st.session_state.messages.copy()
         func_call = {
             "name": "request_additional_info",
-            "arguments": json.dumps({"questions": st.session_state.questions,
-                                      "answers": st.session_state.answers})
+            "arguments": json.dumps({
+                "questions": st.session_state.questions,
+                "answers": st.session_state.answers
+            })
         }
         messages.append({"role": "function", **func_call})
-        # resend
+        # update stored messages
+        st.session_state.messages = messages
         msg = run_llm(messages, api_key, functions=FUNCTIONS)
-        if msg.function_call and msg.function_call.name == "compose_reply":
+        if hasattr(msg, 'function_call') and msg.function_call.name == "compose_reply":
             args = json.loads(msg.function_call.arguments)
             st.session_state.draft = args.get("draft", "").strip()
         else:
