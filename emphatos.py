@@ -90,10 +90,9 @@ st.text_area("Additional information for answer (operator notes)", key="operator
 st.radio("Response channel", ["Email (private)", "Public post"], key="channel_type", horizontal=True)
 api_key = st.text_input("OpenAI API key", type="password")
 
-# ----------------------------------------------------------------------
+# ───────────────────────────────────────────────────────────────────────
 # Button actions
-# ----------------------------------------------------------------------
-# Generate draft
+# ───────────────────────────────────────────────────────────────────────
 if st.button("Generate response draft", key="btn_generate"):
     if not client_review.strip() or not api_key:
         st.error("Please provide the customer text and an API key.")
@@ -107,37 +106,58 @@ if st.button("Generate response draft", key="btn_generate"):
             "• When everything needed is present, call compose_reply with the final draft.\n"
             "Do not invent promises. All commitments must be explicitly confirmed by operator input."
         )
+
+        # ─── SIMPLE MODE (tightly constrained) ───
         if mode == "Simple":
             preamble += (
-                "\nIn simple mode, assume the operator cannot be contacted; "
-                "if any critical fact is missing or unconfirmed, respond with "
-                "“I’m sorry, I don’t have enough information to answer.” "
-                "Do NOT ask any follow-up questions."
+                "\nIn simple mode, assume the operator cannot be contacted.  "
+                "If any critical fact is missing or unconfirmed, you must reply exactly:\n"
+                "“I’m sorry, I don’t have enough information to answer.”\n"
+                "Do NOT add anything else (no follow-up, no suggestions)."
             )
+
         msgs = [
             {"role": "system", "content": preamble},
             {"role": "user", "content": f"Customer review:\n{client_review}\n\nOperator notes:\n{st.session_state.operator_notes or '-'}"}
         ]
         st.session_state.messages = msgs
-        # call LLM differently based on mode
+
+        # ─── RUN LLM ───
         if mode == "Simple":
             msg = run_llm(msgs, api_key)
+            raw = (msg.content or "").strip()
+
+            # If GPT’s reply is not exactly the one‐sentence apology,
+            # but contains words like “sorry” or “I don't have enough”,
+            # we force‐override it to the exact required text.
+            apology = "I’m sorry, I don’t have enough information to answer."
+            low = raw.lower()
+            if low.startswith("i’m sorry") or low.startswith("i'm sorry") or "don't have enough" in low or "do not have enough" in low:
+                st.session_state.draft = apology
+            else:
+                # Otherwise assume GPT gave a real draft answer
+                st.session_state.draft = raw
+
+            st.session_state.stage = "done"
+
+        # ─── ADVANCED MODE ───
         else:
             msg = run_llm(msgs, api_key, functions=FUNCTIONS)
 
-        # handle LLM response
-        if hasattr(msg, 'function_call') and msg.function_call:
-            fn = msg.function_call.name
-            args = json.loads(msg.function_call.arguments or "{}")
-            if fn == "request_additional_info" and mode == "Advanced":
-                st.session_state.questions = args.get("questions", [])
-                st.session_state.stage = "asked"
+            if hasattr(msg, "function_call") and msg.function_call:
+                fn = msg.function_call.name
+                args = json.loads(msg.function_call.arguments or "{}")
+                if fn == "request_additional_info":
+                    st.session_state.questions = args.get("questions", [])
+                    st.session_state.stage = "asked"
+                    return
+                else:  # e.g., compose_reply
+                    st.session_state.draft = (args.get("draft") or msg.content or "").strip()
+                    st.session_state.stage = "done"
             else:
-                st.session_state.draft = (args.get("draft") or msg.content or "").strip()
+                st.session_state.draft = (msg.content or "").strip()
                 st.session_state.stage = "done"
-        else:
-            st.session_state.draft = (msg.content or "").strip()
-            st.session_state.stage = "done"
+
             
 # Submit answers
 if st.session_state.stage == "asked":
