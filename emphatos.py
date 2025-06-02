@@ -156,20 +156,24 @@ if st.session_state.stage == "asked":
         st.session_state.stage = "done"
 
 # ----------------------------------------------------------------------
-# Draft review loop
+# Draft review loop (only return the corrected draft, no commentary)
 # ----------------------------------------------------------------------
 if st.session_state.stage == "done" and not st.session_state.reviewed_draft:
     review_prompt = (
-        "You are a thorough supervisor reviewing the draft reply against all instructions."
-        " Identify any factual, tone, or promise issues and output a revised draft with corrections."
+        "You are a strict reviewer.  \n"
+        "— Carefully check the user’s draft against all instructions.  \n"
+        "— If you find any factual/tone/promise issues, correct them.  \n"
+        "**Output only the final, corrected draft** (no explanations or reviewer notes)."
     )
     review_msgs = [
         {"role": "system", "content": review_prompt},
         {"role": "user", "content": st.session_state.draft or ""}
     ]
     review_msg = run_llm(review_msgs, api_key)
+    # The model will now return just the “clean” draft.
     st.session_state.reviewed_draft = (review_msg.content or "").strip()
     st.session_state.stage = "reviewed"
+
 
 # Display reviewed draft
 if st.session_state.stage in ["reviewed", "translated", "reviewed_translation"]:
