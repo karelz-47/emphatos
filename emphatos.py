@@ -90,7 +90,7 @@ st.text_area("Additional information for answer (operator notes)", key="operator
 st.radio("Response channel", ["Email (private)", "Public post"], key="channel_type", horizontal=True)
 api_key = st.text_input("OpenAI API key", type="password")
 
-----------------------------------------------------------------------
+# ----------------------------------------------------------------------
 # Button actions
 # ----------------------------------------------------------------------
 # Generate draft
