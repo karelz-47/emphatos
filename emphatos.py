@@ -108,7 +108,12 @@ if st.button("Generate response draft", key="btn_generate"):
             "Do not invent promises. All commitments must be explicitly confirmed by operator input."
         )
         if mode == "Simple":
-            preamble += "\nIn simple mode, assume the operator cannot be contacted; prefer a minimal answer and do not call request_additional_info."
+            preamble += (
+                "\nIn simple mode, assume the operator cannot be contacted; "
+                "if any critical fact is missing or unconfirmed, respond with "
+                "“I’m sorry, I don’t have enough information to answer.” "
+                "Do NOT ask any follow-up questions."
+            )
         msgs = [
             {"role": "system", "content": preamble},
             {"role": "user", "content": f"Customer review:\n{client_review}\n\nOperator notes:\n{st.session_state.operator_notes or '-'}"}
