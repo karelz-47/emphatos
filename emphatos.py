@@ -98,6 +98,8 @@ if st.button("Generate response draft", key="btn_generate"):
         st.error("Please provide the customer text and an API key.")
     else:
         mode = st.session_state.mode
+
+        # ─── BUILD Preamble ───────────────────────────────────────────────
         preamble = (
             "You are Empathos, a life-insurance support assistant.\n"
             "• First analyse the customer’s message in detail.\n"
@@ -107,13 +109,13 @@ if st.button("Generate response draft", key="btn_generate"):
             "Do not invent promises. All commitments must be explicitly confirmed by operator input."
         )
 
-        # ─── SIMPLE MODE (tightly constrained) ───
         if mode == "Simple":
+            # In Simple mode, forbid any follow-up. If missing facts, emit exactly this one line:
             preamble += (
-                "\nIn simple mode, assume the operator cannot be contacted.  "
+                "\nIn simple mode, assume the operator cannot be contacted.\n"
                 "If any critical fact is missing or unconfirmed, you must reply exactly:\n"
                 "“I’m sorry, I don’t have enough information to answer.”\n"
-                "Do NOT add anything else (no follow-up, no suggestions)."
+                "Do NOT ask questions or list missing facts in any form."
             )
 
         msgs = [
@@ -122,39 +124,51 @@ if st.button("Generate response draft", key="btn_generate"):
         ]
         st.session_state.messages = msgs
 
-        # ─── RUN LLM ───
+        # ─── RUN LLM & INTERPRET OUTPUT ────────────────────────────────────
         if mode == "Simple":
+            # (1) Call without FUNCTIONS
             msg = run_llm(msgs, api_key)
             raw = (msg.content or "").strip()
 
-            # If GPT’s reply is not exactly the one‐sentence apology,
-            # but contains words like “sorry” or “I don't have enough”,
-            # we force‐override it to the exact required text.
+            # (2) If GPT ever includes “?” or “missing facts” or “request_additional_info”, override
             apology = "I’m sorry, I don’t have enough information to answer."
             low = raw.lower()
-            if low.startswith("i’m sorry") or low.startswith("i'm sorry") or "don't have enough" in low or "do not have enough" in low:
+
+            # Heuristics: if it looks like any question or a list of missing facts, force-override
+            if ("?" in raw) or low.startswith("request_additional_info") or "missing" in low:
                 st.session_state.draft = apology
             else:
-                # Otherwise assume GPT gave a real draft answer
                 st.session_state.draft = raw
 
+            # Mark as “done” so we immediately go to review
             st.session_state.stage = "done"
 
-        # ─── ADVANCED MODE ───
-        else:
+        else:  # ─── ADVANCED MODE ────────────────────────────────────────
             msg = run_llm(msgs, api_key, functions=FUNCTIONS)
 
             if hasattr(msg, "function_call") and msg.function_call:
                 fn = msg.function_call.name
                 args = json.loads(msg.function_call.arguments or "{}")
+
                 if fn == "request_additional_info":
+                    # Capture follow-up questions (list of strings) into state
                     st.session_state.questions = args.get("questions", [])
                     st.session_state.stage = "asked"
-                    st.stop()   # <-- replace 'return' with 'st.stop()'
-                else:  # e.g., compose_reply
-                    st.session_state.draft = (args.get("draft") or msg.content or "").strip()
+                    # Immediately halt. On rerun, the “asked” block below will render.
+                    st.stop()
+
+                elif fn == "compose_reply":
+                    # LLM already composed a reply
+                    st.session_state.draft = (args.get("draft") or "").strip()
                     st.session_state.stage = "done"
+
+                else:
+                    # (Unlikely) fallback: treat content as a plain draft
+                    st.session_state.draft = (msg.content or "").strip()
+                    st.session_state.stage = "done"
+
             else:
+                # Plain text fallback (no functions called)
                 st.session_state.draft = (msg.content or "").strip()
                 st.session_state.stage = "done"
 
