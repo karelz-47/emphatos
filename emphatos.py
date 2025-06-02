@@ -60,6 +60,31 @@ def run_llm(messages, api_key, functions=None, function_call="auto"):
     response = client.chat.completions.create(**params)
     return response.choices[0].message
 
+def log_run_llm(messages, api_key, functions=None, function_call="auto"):
+    """
+    Calls run_llm, but also appends a record of outgoing+incoming to st.session_state.api_log.
+    """
+    # (1) Make a shallow copy of the messages list so we don’t accidentally mutate st.session_state.messages later.
+    outgoing_copy = [dict(m) for m in messages]
+    # (2) Actually call the API
+    response_msg = run_llm(messages, api_key, functions=functions, function_call=function_call)
+
+    # (3) Store both outgoing and incoming in the log
+    st.session_state.api_log.append({
+        "outgoing": outgoing_copy,
+        "incoming": {
+            "role": response_msg.role,
+            "content": response_msg.content,
+            # If function_call is present, log it, too
+            "function_call": {
+                "name": getattr(response_msg, "function_call", None) and response_msg.function_call.name,
+                "arguments": getattr(response_msg, "function_call", None) and response_msg.function_call.arguments
+            }
+        }
+    })
+
+    return response_msg
+
 # ----------------------------------------------------------------------
 # Initialize session state
 # ----------------------------------------------------------------------
@@ -74,7 +99,8 @@ def init_state():
         "reviewed_translation": "",
         "mode": "Simple",
         "operator_notes": "",
-        "messages": []
+        "messages": [],
+        "api_log": []
     }
     for k, v in defaults.items():
         st.session_state.setdefault(k, v)
@@ -118,7 +144,7 @@ if st.button("Generate response draft", key="btn_generate"):
             )
 
             # Call LLM with this single, self-contained prompt
-            msg = run_llm(
+            msg = log_run_llm(
                 [{"role": "system", "content": prompt_simple}],
                 api_key
             )
@@ -151,7 +177,7 @@ if st.button("Generate response draft", key="btn_generate"):
                 "Output only a single function call (request_additional_info or compose_reply)."
             )
 
-            msg = run_llm(
+            msg = log_run_llm(
                 [{"role": "system", "content": prompt_advanced}],
                 api_key,
                 functions=FUNCTIONS
@@ -194,7 +220,7 @@ if st.session_state.stage == "done" and not st.session_state.reviewed_draft:
         {"role": "system", "content": review_prompt},
         {"role": "user", "content": st.session_state.draft or ""}
     ]
-    review_msg = run_llm(review_msgs, api_key)
+    review_msg = log_run_llm(review_msgs, api_key)
     # The model will now return just the “clean” draft.
     st.session_state.reviewed_draft = (review_msg.content or "").strip()
     st.session_state.stage = "reviewed"
@@ -220,7 +246,7 @@ if st.session_state.stage == "reviewed":
             {"role": "system", "content": trans_prompt}
         ]
         # Use run_llm so the result lands in st.session_state.translation
-        msg_trans = run_llm(msgs_trans, api_key)
+        msg_trans = log_run_llm(msgs_trans, api_key)
         st.session_state.translation = (msg_trans.content or "").strip()
         st.session_state.stage = "translated"
 
@@ -234,7 +260,7 @@ if st.session_state.stage == "translated" and not st.session_state.reviewed_tran
         {"role": "system", "content": rev_prompt},
         {"role": "user", "content": st.session_state.translation or ""}
     ]
-    rev_msg = run_llm(rev_msgs, api_key)
+    rev_msg = log_run_llm(rev_msgs, api_key)
     st.session_state.reviewed_translation = (rev_msg.content or "").strip()
     st.session_state.stage = "reviewed_translation"
 
@@ -244,3 +270,27 @@ if st.session_state.stage == "translated" and not st.session_state.reviewed_tran
 if st.session_state.reviewed_translation:
     st.header("Final Translated Response")
     st.text_area("Final translation after review", key="translated_output", value=st.session_state.reviewed_translation, height=220)
+
+# ───────────────────────────────────────────────────────────────────────
+# Debug: show full API log at bottom
+# ───────────────────────────────────────────────────────────────────────
+if st.session_state.api_log:
+    st.markdown("---")
+    st.markdown("## 🔍 API Communication Log (all calls)")
+    for i, entry in enumerate(st.session_state.api_log, start=1):
+        with st.expander(f"Call #{i}"):
+            st.markdown("**Outgoing messages**:")
+            for m in entry["outgoing"]:
+                st.write(f"- role: `{m['role']}`")
+                st.write(f"  ```\n{m['content']}\n```")
+            st.markdown("**Incoming response**:")
+            inc = entry["incoming"]
+            st.write(f"- role: `{inc['role']}`")
+            st.write("```")
+            st.write(f"{inc['content']}")
+            st.write("```")
+            if inc.get("function_call") and inc["function_call"]["name"]:
+                st.markdown("- function_call:")
+                st.write(f"  - name: `{inc['function_call']['name']}`")
+                st.write("  - arguments:")
+                st.json(json.loads(inc["function_call"]["arguments"] or "{}"))
