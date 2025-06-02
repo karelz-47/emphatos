@@ -99,76 +99,84 @@ if st.button("Generate response draft", key="btn_generate"):
     else:
         mode = st.session_state.mode
 
-        # ─── BUILD Preamble ───────────────────────────────────────────────
-        preamble = (
-            "You are Empathos, a life-insurance support assistant.\n"
-            "• First analyse the customer’s message in detail.\n"
-            "• Check whether each factual claim can be verified from the operator notes.\n"
-            "• If any critical fact is missing or unconfirmed, call request_additional_info with concrete questions.\n"
-            "• When everything needed is present, call compose_reply with the final draft.\n"
-            "Do not invent promises. All commitments must be explicitly confirmed by operator input."
-        )
-
+        # ─── SIMPLE MODE ────────────────────────────────────────────────
         if mode == "Simple":
-            # In Simple mode, forbid any follow-up. If missing facts, emit exactly this one line:
-            preamble += (
-                "\nIn simple mode, assume the operator cannot be contacted.\n"
-                "If any critical fact is missing or unconfirmed, you must reply exactly:\n"
-                "“I’m sorry, I don’t have enough information to answer.”\n"
-                "Do NOT ask questions or list missing facts in any form."
+            # — Stand-alone prompt that always asks for the best answer possible —
+            prompt_simple = (
+                "You are Empathos, a life-insurance support assistant.\n"
+                "Customer review:\n"
+                f"{client_review}\n\n"
+                "Operator notes:\n"
+                f"{st.session_state.operator_notes or '-'}\n\n"
+                "Task (Simple mode):\n"
+                "• Even if some facts are missing or unconfirmed, produce the best possible "
+                "customer-facing reply using whatever information is available.\n"
+                "• If you need to assume something (e.g. payout dates, policy details), "
+                "state it explicitly as an assumption (“I’m assuming…”).\n"
+                "• Keep your tone empathetic, factual, and do not invent any commitments you can’t back up.\n"
+                "Output only the final reply—no bullet lists, no questions for the operator, no apologies."
             )
 
-        msgs = [
-            {"role": "system", "content": preamble},
-            {"role": "user", "content": f"Customer review:\n{client_review}\n\nOperator notes:\n{st.session_state.operator_notes or '-'}"}
-        ]
-        st.session_state.messages = msgs
+            # Call LLM with this single, self-contained prompt
+            msg = run_llm(
+                [{"role": "system", "content": prompt_simple}],
+                api_key
+            )
 
-        # ─── RUN LLM & INTERPRET OUTPUT ────────────────────────────────────
-        if mode == "Simple":
-            # (1) Call without FUNCTIONS
-            msg = run_llm(msgs, api_key)
-            raw = (msg.content or "").strip()
-
-            # (2) If GPT ever includes “?” or “missing facts” or “request_additional_info”, override
-            apology = "I’m sorry, I don’t have enough information to answer."
-            low = raw.lower()
-
-            # Heuristics: if it looks like any question or a list of missing facts, force-override
-            if ("?" in raw) or low.startswith("request_additional_info") or "missing" in low:
-                st.session_state.draft = apology
-            else:
-                st.session_state.draft = raw
-
-            # Mark as “done” so we immediately go to review
+            # Take whatever GPT returned as the draft—no overrides
+            st.session_state.draft = (msg.content or "").strip()
             st.session_state.stage = "done"
 
-        else:  # ─── ADVANCED MODE ────────────────────────────────────────
-            msg = run_llm(msgs, api_key, functions=FUNCTIONS)
+        # ─── ADVANCED MODE ──────────────────────────────────────────────
+        else:
+            # A fully standalone prompt for Advanced mode:
+            # - Analyze carefully against operator_notes.
+            # - If any fact is missing or unconfirmed, call request_additional_info.
+            # - If everything is present, call compose_reply with the final draft.
+            # - Never invent promises—only use facts from operator_notes.
+            prompt_advanced = (
+                "You are Empathos, a life-insurance support assistant.\n"
+                "Customer review:\n"
+                f"{client_review}\n\n"
+                "Operator notes:\n"
+                f"{st.session_state.operator_notes or '-'}\n\n"
+                "Task (Advanced mode):\n"
+                "• Carefully analyze the customer’s message against the operator notes.\n"
+                "• If any critical fact is missing or unconfirmed, respond by calling:\n"
+                "    request_additional_info(questions=[...])\n"
+                "  where each question is a precise, concrete missing‐fact query.\n"
+                "• If all facts are present and validated, respond by calling:\n"
+                "    compose_reply(draft=\"<final customer‐facing reply>\")\n"
+                "• Do not invent any promises—only use facts explicitly confirmed in the operator notes.\n"
+                "Output only a single function call (request_additional_info or compose_reply)."
+            )
+
+            msg = run_llm(
+                [{"role": "system", "content": prompt_advanced}],
+                api_key,
+                functions=FUNCTIONS
+            )
 
             if hasattr(msg, "function_call") and msg.function_call:
                 fn = msg.function_call.name
                 args = json.loads(msg.function_call.arguments or "{}")
 
                 if fn == "request_additional_info":
-                    # Capture follow-up questions (list of strings) into state
                     st.session_state.questions = args.get("questions", [])
                     st.session_state.stage = "asked"
-                    # Immediately halt. On rerun, the “asked” block below will render.
                     st.stop()
 
                 elif fn == "compose_reply":
-                    # LLM already composed a reply
                     st.session_state.draft = (args.get("draft") or "").strip()
                     st.session_state.stage = "done"
 
                 else:
-                    # (Unlikely) fallback: treat content as a plain draft
+                    # (Fallback—shouldn’t happen if model obeys the prompt exactly)
                     st.session_state.draft = (msg.content or "").strip()
                     st.session_state.stage = "done"
 
             else:
-                # Plain text fallback (no functions called)
+                # If the model didn’t call a function, treat its content as a draft
                 st.session_state.draft = (msg.content or "").strip()
                 st.session_state.stage = "done"
 
