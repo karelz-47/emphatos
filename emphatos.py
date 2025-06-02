@@ -150,35 +150,13 @@ if st.button("Generate response draft", key="btn_generate"):
                 if fn == "request_additional_info":
                     st.session_state.questions = args.get("questions", [])
                     st.session_state.stage = "asked"
-                    return
+                    st.stop()   # <-- replace 'return' with 'st.stop()'
                 else:  # e.g., compose_reply
                     st.session_state.draft = (args.get("draft") or msg.content or "").strip()
                     st.session_state.stage = "done"
             else:
                 st.session_state.draft = (msg.content or "").strip()
                 st.session_state.stage = "done"
-
-            
-# Submit answers
-if st.session_state.stage == "asked":
-    st.header("Operator follow-up questions")
-    for i, q in enumerate(st.session_state.questions):
-        ans = st.text_input(f"Q{i+1}: {q}", key=f"ans_{i}")
-        st.session_state.answers[q] = ans
-    if st.button("Submit answers and draft reply", key="btn_submit_answers"):
-        msgs = list(st.session_state.messages)
-        msgs.append({
-            "role": "function",
-            "name": "request_additional_info",
-            "content": json.dumps({"questions": st.session_state.questions, "answers": st.session_state.answers})
-        })
-        st.session_state.messages = msgs
-        msg = run_llm(msgs, api_key, functions=FUNCTIONS)
-        if hasattr(msg, 'function_call') and msg.function_call.name == "compose_reply":
-            st.session_state.draft = json.loads(msg.function_call.arguments or "{}").get("draft", "").strip()
-        else:
-            st.session_state.draft = (msg.content or "").strip()
-        st.session_state.stage = "done"
 
 # ----------------------------------------------------------------------
 # Draft review loop (only return the corrected draft, no commentary)
