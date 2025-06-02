@@ -90,7 +90,7 @@ st.text_area("Additional information for answer (operator notes)", key="operator
 st.radio("Response channel", ["Email (private)", "Public post"], key="channel_type", horizontal=True)
 api_key = st.text_input("OpenAI API key", type="password")
 
-# ----------------------------------------------------------------------
+----------------------------------------------------------------------
 # Button actions
 # ----------------------------------------------------------------------
 # Generate draft
@@ -133,7 +133,7 @@ if st.button("Generate response draft", key="btn_generate"):
         else:
             st.session_state.draft = (msg.content or "").strip()
             st.session_state.stage = "done"
-
+            
 # Submit answers
 if st.session_state.stage == "asked":
     st.header("Operator follow-up questions")
