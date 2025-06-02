@@ -211,22 +211,24 @@ if st.session_state.stage in ["reviewed", "translated", "reviewed_translation"]:
 if st.session_state.stage == "reviewed":
     tgt = st.selectbox("Translate final reply to:", LANGUAGE_OPTIONS, index=0)
     if st.button("Translate & review", key="btn_translate"):
-        trans = OpenAI(api_key=api_key).chat.completions.create(
-            model="gpt-4.1-mini",
-            messages=[
-                {"role": "system", "content": f"Translate without empty promises into {tgt}."},
-                {"role": "user", "content": st.session_state.reviewed_draft or ""}
-            ],
-            max_tokens=1000,
-            temperature=0
+        # Build a simple translate‐only prompt
+        trans_prompt = (
+            f"Translate the following reply into {tgt} without adding any empty promises or extra commentary:\n\n"
+            f"{st.session_state.reviewed_draft}"
         )
-        st.session_state.translation = (trans.choices[0].message.content or "").strip()
+        msgs_trans = [
+            {"role": "system", "content": trans_prompt}
+        ]
+        # Use run_llm so the result lands in st.session_state.translation
+        msg_trans = run_llm(msgs_trans, api_key)
+        st.session_state.translation = (msg_trans.content or "").strip()
         st.session_state.stage = "translated"
 
 if st.session_state.stage == "translated" and not st.session_state.reviewed_translation:
+    # Prompt the LLM to double-check the translation for accuracy, tone, and no empty promises
     rev_prompt = (
-        "You are a meticulous supervisor reviewing the translated reply for accuracy, tone, and no empty promises."
-        " Produce the final translation."
+        "You are a meticulous supervisor reviewing the translated reply for accuracy, tone, "
+        "and no empty promises. Produce exactly the final, polished translation—nothing else."
     )
     rev_msgs = [
         {"role": "system", "content": rev_prompt},
