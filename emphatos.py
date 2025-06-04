@@ -212,11 +212,9 @@ if st.button("Clear fields / Start new task", key="btn_clear"):
     # Instead of assigning to mode (which conflicts with the radio), delete it:
     if "mode" in st.session_state:
         del st.session_state["mode"]
-
      st.stop()
 
 st.markdown("---")
-
 
 # ───────────────────────────────────────────────────────────────────────
 # Button actions: "Generate response draft"
@@ -409,7 +407,7 @@ if st.session_state.stage == "asked":
         st.session_state.stage = "init"
         st.session_state.questions = []
         st.session_state.answers = {}
-        st.experimental_rerun()
+        st.stop()
 
     st.markdown(
         "The model needs more facts before drafting a reply. "
@@ -489,7 +487,7 @@ if st.session_state.stage == "asked":
                 st.session_state.draft = (msg2.content or "").strip()
 
             st.session_state.stage = "done"
-            st.experimental_rerun()
+            st.stop()
 
 
 # ───────────────────────────────────────────────────────────────────────
@@ -544,7 +542,7 @@ if st.session_state.reviewed_draft:
             for k in ["draft", "reviewed_draft", "translation", "reviewed_translation"]:
                 st.session_state[k] = ""
             st.session_state.stage = "init"
-            st.experimental_rerun()
+            st.stop()
     with col2:
         if st.button("🔄 Start over completely", key="btn_reset_all"):
             for k in [
@@ -557,7 +555,7 @@ if st.session_state.reviewed_draft:
                 else:
                     st.session_state[k] = [] if isinstance(st.session_state[k], list) else {}
             st.session_state.mode = "Simple"
-            st.experimental_rerun()
+            st.stop()
 
     # (5) Download final reply
     st.download_button(
