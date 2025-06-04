@@ -198,8 +198,8 @@ if st.button("Clear fields / Start new task", key="btn_clear"):
     if preserve_info:
         saved_signature = st.session_state.signature
         saved_notes = st.session_state.operator_notes
+
     # Clear everything except tone, use_functions, detect_translate (and maybe preserve)
-        # ...
     for k in [
         "stage", "questions", "answers", "draft", "reviewed_draft",
         "translation", "reviewed_translation", "messages", "api_log"
@@ -212,9 +212,19 @@ if st.button("Clear fields / Start new task", key="btn_clear"):
     # Instead of assigning to mode (which conflicts with the radio), delete it:
     if "mode" in st.session_state:
         del st.session_state["mode"]
-     st.stop()
+
+    # Restore preserved notes/signature if requested
+    if preserve_info:
+        st.session_state.signature = saved_signature
+        st.session_state.operator_notes = saved_notes
+    else:
+        st.session_state.signature = ""
+        st.session_state.operator_notes = ""
+
+    st.stop()
 
 st.markdown("---")
+
 
 # ───────────────────────────────────────────────────────────────────────
 # Button actions: "Generate response draft"
@@ -394,7 +404,6 @@ if st.button("Generate response draft", key="btn_generate"):
                 # If no function_call, treat `msg.content` as the draft
                 st.session_state.draft = (msg.content or "").strip()
                 st.session_state.stage = "done"
-
 
 # ───────────────────────────────────────────────────────────────────────
 # [1] Show questions & collect operator answers (Advanced “asked” stage)
@@ -663,3 +672,4 @@ if st.session_state.api_log:
                     st.write(f"  - name: `{inc['function_call']['name']}`")
                     st.write("  - arguments:")
                     st.json(json.loads(inc["function_call"]["arguments"] or "{}"))
+
