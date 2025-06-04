@@ -222,7 +222,7 @@ if st.session_state.stage == "done" and not st.session_state.reviewed_draft:
         "– Correct any issues directly in-line.\n"
         "– Delete or rewrite ASSUMPTION lines only if they are unsupported or unclear.\n"
         "– Keep total length no more than 250 words.\n"
-        "- Return only the corrected draft; no explanations or reviewer notes.
+        "- Return only the corrected draft; no explanations or reviewer notes.\n"
         "**Output only the final, corrected draft** (no explanations or reviewer notes)."
     )
     review_msgs = [
