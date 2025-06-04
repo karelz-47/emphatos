@@ -199,6 +199,7 @@ if st.button("Clear fields / Start new task", key="btn_clear"):
         saved_signature = st.session_state.signature
         saved_notes = st.session_state.operator_notes
     # Clear everything except tone, use_functions, detect_translate (and maybe preserve)
+        # ...
     for k in [
         "stage", "questions", "answers", "draft", "reviewed_draft",
         "translation", "reviewed_translation", "messages", "api_log"
@@ -207,15 +208,12 @@ if st.button("Clear fields / Start new task", key="btn_clear"):
             st.session_state[k] = ""
         else:
             st.session_state[k] = [] if isinstance(st.session_state[k], list) else {}
-    st.session_state.mode = "Simple"
-    if preserve_info:
-        st.session_state.signature = saved_signature
-        st.session_state.operator_notes = saved_notes
-    else:
-        st.session_state.signature = ""
-        st.session_state.operator_notes = ""
-    st.experimental_rerun()
 
+    # Instead of assigning to mode (which conflicts with the radio), delete it:
+    if "mode" in st.session_state:
+        del st.session_state["mode"]
+
+    st.experimental_rerun()
 
 st.markdown("---")
 
