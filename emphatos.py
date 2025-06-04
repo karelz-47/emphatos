@@ -52,6 +52,7 @@ FUNCTIONS = [
 
 DEFAULT_PROMPT_ADVANCED = (
     "You are Empathos, a seasoned life-insurance-support assistant.\n"
+    "Use professional unit-linked insurance terminology; ensure it sounds natural for native speakers with a background in unit-linked insurance.\n"
     "Customer review:\n"
     "{client_review}\n\n"
     "Operator notes:\n"
@@ -59,11 +60,13 @@ DEFAULT_PROMPT_ADVANCED = (
     "Task:\n"
     "1. Carefully analyze the customer’s review against the operator notes.\n"
     "2. If any critical fact is missing or unconfirmed:\n"
-    "   2.1 Return a numbered list of precise, concrete questions. Prefix first line with 'QUESTIONS:'\n"
+    "   2.1 Return a numbered list of precise, concrete questions. Prefix the first line with 'QUESTIONS:'\n"
     "3. If all critical facts are available:\n"
-    "   3.1 Draft the complete customer reply (≤ 250 words). Prefix first line with 'REPLY:'\n"
+    "   3.1 Draft the complete customer reply (≤ 250 words). Prefix the first line with 'REPLY:'\n"
     "   3.2 Whenever you must infer a detail, prefix the sentence with 'ASSUMPTION:'\n"
     "   3.3 Do not invent any promises—only use facts explicitly confirmed in the operator notes.\n"
+    "4. At the end of your reply, include exactly this signature (do not alter it):\n"
+    "{signature}\n"
     "RULES:\n"
     "– Empathic, professional tone; never promise more than the operator notes allow.\n"
     "– Do not mention internal processes."
@@ -122,11 +125,13 @@ def init_state():
         "reviewed_translation": "",
         "mode": "Simple",           # "Simple" or "Advanced"
         "operator_notes": "",
+        "signature": "",            # operator’s personal signature line
         "messages": [],             # full chat history
         "api_log": []               # list of {"outgoing": [...], "incoming": {...}}
     }
     for k, v in defaults.items():
         st.session_state.setdefault(k, v)
+
 
 init_state()
 
@@ -147,34 +152,72 @@ tone = st.selectbox(
 )
 st.session_state.tone = tone
 
-# (3) Auto-detect & translate customer message
+# (3) Signature input
+st.text_area(
+    "Operator signature (e.g., 'Yours sincerely\nJacob')",
+    key="signature",
+    placeholder="Enter your personal signature line(s) here",
+    height=80
+)
+
+# (4) Auto-detect & translate customer message
 detect_translate = st.checkbox("Auto-detect customer language and translate to English", key="auto_detect")
 
-# (4) Interface mode: Simple vs. Advanced
+# (5) Interface mode: Simple vs. Advanced
 st.radio("Interface mode", ["Simple", "Advanced"], key="mode", horizontal=True)
 
-# (5) Customer message / review
+# (6) Customer message / review (always editable)
 client_review = st.text_area(
     "Customer message or review",
     placeholder="Paste the customer's text here",
     height=140
 )
 
-# (6) Operator notes (disabled once stage != init)
-disable_notes = st.session_state.stage not in ["init"]
+# (7) Operator notes (always editable)
 st.text_area(
     "Additional information for answer (operator notes)",
     key="operator_notes",
     placeholder="Reply to open questions or add facts the model needs.",
-    height=100,
-    disabled=disable_notes
+    height=100
 )
 
-# (7) Response channel: Email (private) or Public post
+# (8) Response channel: Email (private) or Public post
 st.radio("Response channel", ["Email (private)", "Public post"], key="channel_type", horizontal=True)
 
-# (8) API key input
+# (9) API key input
 api_key = st.text_input("OpenAI API key", type="password")
+
+
+# ───────────────────────────────────────────────────────────────────────
+# Button: "Clear fields / Start new task"
+# ───────────────────────────────────────────────────────────────────────
+st.markdown("---")
+preserve_info = st.checkbox("Keep signature and notes when clearing", key="keep_info")
+if st.button("Clear fields / Start new task", key="btn_clear"):
+    # Optionally preserve operator_notes and signature
+    if preserve_info:
+        saved_signature = st.session_state.signature
+        saved_notes = st.session_state.operator_notes
+    # Clear everything except tone, use_functions, detect_translate (and maybe preserve)
+    for k in [
+        "stage", "questions", "answers", "draft", "reviewed_draft",
+        "translation", "reviewed_translation", "messages", "api_log"
+    ]:
+        if isinstance(st.session_state.get(k), str):
+            st.session_state[k] = ""
+        else:
+            st.session_state[k] = [] if isinstance(st.session_state[k], list) else {}
+    st.session_state.mode = "Simple"
+    if preserve_info:
+        st.session_state.signature = saved_signature
+        st.session_state.operator_notes = saved_notes
+    else:
+        st.session_state.signature = ""
+        st.session_state.operator_notes = ""
+    st.experimental_rerun()
+
+
+st.markdown("---")
 
 
 # ───────────────────────────────────────────────────────────────────────
@@ -220,23 +263,27 @@ if st.button("Generate response draft", key="btn_generate"):
             )
 
         mode = st.session_state.mode
+        signature = st.session_state.signature.strip() or "(No signature provided)"
 
         # ─── SIMPLE MODE ────────────────────────────────────────────────
         if mode == "Simple":
             prompt_simple = (
                 f"{channel_instr}\n"
                 "You are Empathos, a seasoned life-insurance-support assistant.\n"
+                "Use professional unit-linked insurance terminology; ensure it sounds natural for native speakers with a background in unit-linked insurance.\n"
                 f"Style: {st.session_state.tone}\n"
                 "Customer review (verbatim):\n"
                 f"{client_review_en}\n\n"
                 "Operator notes:\n"
                 f"{st.session_state.operator_notes or '-'}\n\n"
                 "Task:\n"
-                "1. Write a complete reply to the customer even if some details are missing. "
+                "1. Write a complete reply to the customer even if some details are missing.\n"
                 "2. Whenever you must infer a fact, prefix it with `ASSUMPTION:` in one sentence.\n"
-                "3. Length: ≤ 250 words. "
-                "4. Voice: warm, empathic, strictly factual.\n"
-                "5. **Return only the final reply text** – no lists, no meta-commentary.\n"
+                "3. Length: ≤ 250 words.\n"
+                "4. Voice: warm, empathic, strictly factual, using unit-linked insurance terminology appropriately.\n"
+                "5. At the end of your reply, include exactly this signature (do not alter it):\n"
+                f"{signature}\n"
+                "6. **Return only the final reply text** – no lists, no meta-commentary.\n"
             )
 
             # Append system prompt to the message-history
@@ -284,9 +331,15 @@ if st.button("Generate response draft", key="btn_generate"):
             # (E) Fill in placeholders for advanced mode
             prompt_advanced = st.session_state.custom_prompt.format(
                 client_review=client_review_en,
-                operator_notes=st.session_state.operator_notes or "-"
+                operator_notes=st.session_state.operator_notes or "-",
+                signature=signature
             )
-            prompt_advanced = f"{channel_instr}\nStyle: {st.session_state.tone}\n" + prompt_advanced
+
+            # Prepend channel_instr and tone
+            prompt_advanced = (
+                f"{channel_instr}\n"
+                f"{prompt_advanced}"
+            )
 
             # Append to history
             st.session_state.messages.append({
@@ -388,10 +441,9 @@ if st.session_state.stage == "asked":
             msgs = []
             prompt_advanced = (
                 "You are Empathos, a seasoned life-insurance-support assistant.\n"
-                "Customer review:\n"
-                f"{st.session_state.messages[0]['content']}\n\n"
-                "Operator notes:\n"
-                f"{st.session_state.operator_notes or '-'}\n\n"
+                "Use professional unit-linked insurance terminology; ensure it sounds natural for native speakers with a background in unit-linked insurance.\n"
+                f"Customer review:\n{st.session_state.messages[0]['content']}\n\n"
+                f"Operator notes:\n{st.session_state.operator_notes or '-'}\n\n"
                 "Task:\n"
                 "1. These are the additional facts provided by the operator:\n"
             )
@@ -410,7 +462,9 @@ if st.session_state.stage == "asked":
                     "draft": (
                         "Using the above customer review, operator notes, "
                         "and these additional facts, write a final reply (≤ 250 words). "
-                        "Prefix any inferred detail with ASSUMPTION:."
+                        "Prefix any inferred detail with ASSUMPTION:. "
+                        "At the end, include exactly this signature: "
+                        f"{st.session_state.signature.strip() or '(No signature provided)'}"
                     )
                 })
             }
@@ -470,7 +524,7 @@ if st.session_state.stage == "done" and not st.session_state.reviewed_draft:
 # ───────────────────────────────────────────────────────────────────────
 # [3] Display reviewed draft + regenerate/start-over + download + word count
 # ───────────────────────────────────────────────────────────────────────
-if st.session_state.stage in ["reviewed", "translated", "reviewed_translation"]:
+if st.session_state.reviewed_draft:
     st.header("Reviewed Draft Response")
     st.text_area(
         "Final draft after review",
@@ -498,13 +552,13 @@ if st.session_state.stage in ["reviewed", "translated", "reviewed_translation"]:
             for k in [
                 "stage", "questions", "answers", "draft", "reviewed_draft",
                 "translation", "reviewed_translation", "operator_notes",
-                "messages", "api_log"
+                "signature", "messages", "api_log"
             ]:
                 if isinstance(st.session_state.get(k), str):
                     st.session_state[k] = ""
                 else:
                     st.session_state[k] = [] if isinstance(st.session_state[k], list) else {}
-            st.session_state.stage = "init"
+            st.session_state.mode = "Simple"
             st.experimental_rerun()
 
     # (5) Download final reply
@@ -515,19 +569,22 @@ if st.session_state.stage in ["reviewed", "translated", "reviewed_translation"]:
         mime="text/plain"
     )
 
+    st.markdown("---")
 
-# ----------------------------------------------------------------------
-# Translation + review
-# ----------------------------------------------------------------------
-if st.session_state.stage == "reviewed":
-    tgt = st.selectbox("Translate final reply to:", LANGUAGE_OPTIONS, index=0)
+    # ───────────────────────────────────────────────────────────────────────
+    # Translation controls (always visible if there's a reviewed draft)
+    # ───────────────────────────────────────────────────────────────────────
+    tgt = st.selectbox(
+        "Translate final reply to:",
+        LANGUAGE_OPTIONS,
+        index=0,
+        key="translation_language"
+    )
     if st.button("Translate & review", key="btn_translate"):
         trans_prompt = (
-            f"Translate the following reply into {tgt} while: \n"
-            "REQUIREMENTS: \n"
-            "1. Keep meaning, tone, and sentence count identical where possible.\n"
-            "2. Do not add promises or commentary.\n"
-            "3. All subsequent reviews must remain in {tgt}.\n"
+            "You are a translation assistant. Translate the following reply into "
+            f"{tgt} using professional unit-linked insurance terminology; ensure it sounds natural for native speakers with a background in unit-linked insurance.\n"
+            "Do not add commentary or promises.\n"
             f"{st.session_state.reviewed_draft}"
         )
         msgs_trans = [
@@ -542,52 +599,49 @@ if st.session_state.stage == "reviewed":
         st.session_state.translation = (msg_trans.content or "").strip()
         st.session_state.stage = "translated"
 
-if st.session_state.stage == "translated" and not st.session_state.reviewed_translation:
-    rev_prompt = (
-        "You are a meticulous supervisor reviewing the translated reply.\n"
-        "TASK:\n"
-        "1. Polish the translated reply for accuracy, tone, and removal of empty promises.\n"
-        "2. Minor wording tweaks only; preserve structure.\n"
-        "3. Return the final translation, in the same language it already uses – nothing else."
-    )
-    rev_msgs = [
-        {"role": "system", "content": rev_prompt},
-        {"role": "user", "content": st.session_state.translation or ""}
-    ]
-    try:
-        rev_msg = log_run_llm(rev_msgs, api_key)
-    except Exception as e:
-        st.error(f"❌ OpenAI API error: {e}")
-        st.stop()
+    # If a raw translation exists but hasn't been reviewed yet
+    if st.session_state.translation and not st.session_state.reviewed_translation:
+        rev_prompt = (
+            "You are a meticulous supervisor reviewing the translated reply.\n"
+            "TASK:\n"
+            "1. Polish the translated reply for accuracy, tone, and removal of empty promises.\n"
+            "2. Minor wording tweaks only; preserve structure.\n"
+            "3. Return the final translation, in the same language it already uses – nothing else."
+        )
+        rev_msgs = [
+            {"role": "system", "content": rev_prompt},
+            {"role": "user", "content": st.session_state.translation or ""}
+        ]
+        try:
+            rev_msg = log_run_llm(rev_msgs, api_key)
+        except Exception as e:
+            st.error(f"❌ OpenAI API error: {e}")
+            st.stop()
 
-    st.session_state.reviewed_translation = (rev_msg.content or "").strip()
-    st.session_state.stage = "reviewed_translation"
+        st.session_state.reviewed_translation = (rev_msg.content or "").strip()
+        st.session_state.stage = "reviewed_translation"
 
+    # If a reviewed translation exists, show it
+    if st.session_state.reviewed_translation:
+        st.header("Final Translated Response")
+        st.text_area(
+            "Final translation after review",
+            key="translated_output",
+            value=st.session_state.reviewed_translation,
+            height=220
+        )
 
-# ----------------------------------------------------------------------
-# Final translated output
-# ----------------------------------------------------------------------
-if st.session_state.reviewed_translation:
-    st.header("Final Translated Response")
-    st.text_area(
-        "Final translation after review",
-        key="translated_output",
-        value=st.session_state.reviewed_translation,
-        height=220
-    )
+        wc_t = len(st.session_state.reviewed_translation.split())
+        st.caption(f"Word count: {wc_t} / 250")
+        if wc_t > 250:
+            st.warning("⚠️ Translated reply exceeds 250 words.")
 
-    wc_t = len(st.session_state.reviewed_translation.split())
-    st.caption(f"Word count: {wc_t} / 250")
-    if wc_t > 250:
-        st.warning("⚠️ Translated reply exceeds 250 words.")
-
-    st.download_button(
-        label="📥 Download translated reply",
-        data=st.session_state.reviewed_translation,
-        file_name="empathos_reply_translated.txt",
-        mime="text/plain"
-    )
-
+        st.download_button(
+            label="📥 Download translated reply",
+            data=st.session_state.reviewed_translation,
+            file_name="empathos_reply_translated.txt",
+            mime="text/plain"
+        )
 
 # ----------------------------------------------------------------------
 # Debug: show full API log at bottom (collapsed by default)
