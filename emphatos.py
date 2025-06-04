@@ -129,18 +129,19 @@ if st.button("Generate response draft", key="btn_generate"):
         if mode == "Simple":
             # — Stand-alone prompt that always asks for the best answer possible —
             prompt_simple = (
-                "You are Empathos, a life-insurance support assistant.\n"
-                "Customer review:\n"
+                "You are Empathos, a seasoned life-insurance-support assistant.\n"
+               ## Context
+                "Customer review (verbatim):\n"
                 f"{client_review}\n\n"
                 "Operator notes:\n"
                 f"{st.session_state.operator_notes or '-'}\n\n"
-                "Task (Simple mode):\n"
-                "• Even if some facts are missing or unconfirmed, produce the best possible "
-                "customer-facing reply using whatever information is available.\n"
-                "• If you need to assume something (e.g. payout dates, policy details), "
-                "state it explicitly as an assumption (“I’m assuming…”).\n"
-                "• Keep your tone empathetic, factual, and do not invent any commitments you can’t back up.\n"
-                "Output only the final reply—no bullet lists, no questions for the operator, no apologies."
+                ## Instructions
+                "Task:\n"
+                "1. Write a complete reply to the customer even if some details are missing."
+                "2. Whenever you must infer a fact, prefix it with `ASSUMPTION:` and state it in one sentence. \n"
+                "3. Length: ≤ 250 words."
+                "4. Voice: warm, empathic, strictly factual; never create obligations that are not in Operator notes.\n"
+                "5. **Return only the final reply text** – no lists, no meta-commentary.\n"
             )
 
             # Call LLM with this single, self-contained prompt
@@ -161,21 +162,25 @@ if st.button("Generate response draft", key="btn_generate"):
             # - If everything is present, call compose_reply with the final draft.
             # - Never invent promises—only use facts from operator_notes.
             prompt_advanced = (
-                "You are Empathos, a life-insurance support assistant.\n"
+                "You are Empathos, a seasoned life-insurance-support assistant.\n"
                 "Customer review:\n"
                 f"{client_review}\n\n"
                 "Operator notes:\n"
                 f"{st.session_state.operator_notes or '-'}\n\n"
-                "Task (Advanced mode):\n"
-                "• Carefully analyze the customer’s message against the operator notes.\n"
-                "• If any critical fact is missing or unconfirmed, respond by calling:\n"
-                "    request_additional_info(questions=[...])\n"
-                "  where each question is a precise, concrete missing‐fact query.\n"
-                "• If all facts are present and validated, respond by calling:\n"
-                "    compose_reply(draft=\"<final customer‐facing reply>\")\n"
-                "• Do not invent any promises—only use facts explicitly confirmed in the operator notes.\n"
-                "Output only a single function call (request_additional_info or compose_reply)."
-            )
+                "Task:\n"
+                "1. Carefully analyze the customer’s review against the operator notes.\n"
+                "2. If any critical fact is missing or unconfirmed:\n"
+                "2.1 Return a numbered list of precise, concrete questions the operator must answer.\n"
+                "2.2 Prefix the very first line with 'QUESTIONS:' \n"
+                "3. If all critical facts are available:\n"
+                "3.1 Draft the complete customer reply (≤ 250 words).\n"
+                "3.2 Whenever you must infer a detail, prefix the sentence with 'ASSUMPTION:' \n"
+                "3.3 Do not invent any promises—only use facts explicitly confirmed in the operator notes.\n"
+                "3.4 Prefix the very first line with 'REPLY:' \n"
+                "RULES:\n"
+                "– Empathic, professional tone; never promise more than the Operator notes allow.\n"
+                "– Do not mention internal processes."
+              )
 
             msg = log_run_llm(
                 [{"role": "system", "content": prompt_advanced}],
@@ -212,8 +217,12 @@ if st.button("Generate response draft", key="btn_generate"):
 if st.session_state.stage == "done" and not st.session_state.reviewed_draft:
     review_prompt = (
         "You are a strict reviewer.  \n"
-        "— Carefully check the user’s draft against all instructions.  \n"
-        "— If you find any factual/tone/promise issues, correct them.  \n"
+        "TASK:\n"
+        "– Audit the draft for factual accuracy, tone, and unauthorized promises.\n"
+        "– Correct any issues directly in-line.\n"
+        "– Delete or rewrite ASSUMPTION lines only if they are unsupported or unclear.\n"
+        "– Keep total length no more than 250 words.\n"
+        "- Return only the corrected draft; no explanations or reviewer notes.
         "**Output only the final, corrected draft** (no explanations or reviewer notes)."
     )
     review_msgs = [
@@ -239,7 +248,11 @@ if st.session_state.stage == "reviewed":
     if st.button("Translate & review", key="btn_translate"):
         # Build a simple translate‐only prompt
         trans_prompt = (
-            f"Translate the following reply into {tgt} without adding any empty promises or extra commentary:\n\n"
+            f"Translate the following reply into {tgt} while: \n"
+            "REQUIREMENTS: \n"
+            "1. Keep meaning, tone, and sentence count identical where possible.\n"
+            "2. Do not add promises or commentary.\n"
+            "3. All subsequent reviews must remain in {tgt}.\n"
             f"{st.session_state.reviewed_draft}"
         )
         msgs_trans = [
@@ -253,8 +266,11 @@ if st.session_state.stage == "reviewed":
 if st.session_state.stage == "translated" and not st.session_state.reviewed_translation:
     # Prompt the LLM to double-check the translation for accuracy, tone, and no empty promises
     rev_prompt = (
-        "You are a meticulous supervisor reviewing the translated reply for accuracy, tone, "
-        "and no empty promises. Produce exactly the final, polished translation—nothing else."
+        "You are a meticulous supervisor reviewing the translated reply.\n"
+        "TASK:\n"
+        "1. Polish the translated reply for accuracy, tone, and removal of empty promises.\n"
+        "2. Minor wording tweaks only; preserve structure.\n"
+        "3. Return the final translation, in the same language it already uses – nothing else."
     )
     rev_msgs = [
         {"role": "system", "content": rev_prompt},
