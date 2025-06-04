@@ -213,7 +213,7 @@ if st.button("Clear fields / Start new task", key="btn_clear"):
     if "mode" in st.session_state:
         del st.session_state["mode"]
 
-    st.experimental_rerun()
+     st.stop()
 
 st.markdown("---")
 
